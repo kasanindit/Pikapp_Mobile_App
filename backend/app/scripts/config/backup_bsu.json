@@ -1,0 +1,316 @@
+[
+    {
+        "uid": "qWKMM2dFk3cHlAgBaj2ff7nr4QU2",
+        "phone_num": "",
+        "updated_at": "2026-04-12T18:17:18.196392+00:00",
+        "is_priority": false,
+        "bsu_name": "BS Gemilang tegalgundil",
+        "update_at": "2026-03-27T16:14:26.683933+00:00",
+        "kecamatan": "BOGOR UTARA",
+        "address": "",
+        "coordinate": [
+            0,
+            0
+        ],
+        "created_at": "2026-03-27T16:14:26.683898+00:00",
+        "email": "bs.gemilang.tegalgundil@pikapp.id",
+        "bsu_id": "BSU001",
+        "role": "user"
+    },
+    {
+        "uid": "R7xiESJkbINbTFMNecWkFSj0OoM2",
+        "phone_num": "",
+        "updated_at": "2026-04-12T18:17:19.136203+00:00",
+        "is_priority": false,
+        "bsu_name": "BSS TUNAS HARAPAN",
+        "update_at": "2026-03-27T16:14:30.134180+00:00",
+        "kecamatan": "BOGOR SELATAN",
+        "address": "",
+        "coordinate": [
+            0,
+            0
+        ],
+        "created_at": "2026-03-27T16:14:30.134163+00:00",
+        "email": "bss.tunas.harapan@pikapp.id",
+        "bsu_id": "BSU002",
+        "role": "user"
+    },
+    {
+        "uid": "V7qDgG3IC0Zn0uN5Hwk86PTJYsv1",
+        "phone_num": "",
+        "updated_at": "2026-04-12T18:17:20.162777+00:00",
+        "is_priority": false,
+        "bsu_name": "CAFEE Maraca",
+        "update_at": "2026-03-27T16:14:29.100549+00:00",
+        "kecamatan": "BOGOR TENGAH",
+        "address": "",
+        "coordinate": [
+            0,
+            0
+        ],
+        "created_at": "2026-03-27T16:14:29.100530+00:00",
+        "email": "cafee.maraca@pikapp.id",
+        "bsu_id": "BSU003",
+        "role": "user"
+    },
+    {
+        "uid": "zMSWNKUs6iNk5CIx9PkhkvdOMJy1",
+        "phone_num": "",
+        "updated_at": "2026-04-12T18:17:21.133369+00:00",
+        "is_priority": false,
+        "bsu_name": "BSU Beriman Pusdikzi",
+        "update_at": "2026-03-27T16:14:27.649506+00:00",
+        "kecamatan": "BOGOR SELATAN",
+        "address": "",
+        "coordinate": [
+            0,
+            0
+        ],
+        "created_at": "2026-03-27T16:14:27.649490+00:00",
+        "email": "bsu.beriman.pusdikzi@pikapp.id",
+        "bsu_id": "BSU004",
+        "role": "user"
+    },
+    {
+        "uid": "heA6TRPHNaQpOPNgoS3RtF9LEcV2",
+        "phone_num": "",
+        "updated_at": "2026-04-12T18:17:22.004369+00:00",
+        "is_priority": false,
+        "bsu_name": "BSU Baskom Grika",
+        "update_at": "2026-03-27T16:14:27.508484+00:00",
+        "kecamatan": "BOGOR TIMUR",
+        "address": "",
+        "coordinate": [
+            0,
+            0
+        ],
+        "created_at": "2026-03-27T16:14:27.508460+00:00",
+        "email": "bsu.baskom.grika@pikapp.id",
+        "bsu_id": "BSU005",
+        "role": "user"
+    },
+    {
+        "uid": "pvrrV1usunZfHZTa5gECfPnHKhE2",
+        "phone_num": "",
+        "updated_at": "2026-04-12T18:17:23.039502+00:00",
+        "is_priority": false,
+        "bsu_name": "BSU anggrek resik",
+        "update_at": "2026-03-27T16:14:27.303013+00:00",
+        "kecamatan": "TANAH SAREAL",
+        "address": "",
+        "coordinate": [
+            0,
+            0
+        ],
+        "created_at": "2026-03-27T16:14:27.302983+00:00",
+        "email": "bsu.anggrek.resik@pikapp.id",
+        "bsu_id": "BSU006",
+        "role": "user"
+    },
+    {
+        "uid": "dQtyfWakeeX9WyzNbii3jVhxJWz1",
+        "phone_num": "",
+        "updated_at": "2026-04-12T18:17:23.980604+00:00",
+        "is_priority": false,
+        "bsu_name": "BSU Pelita Pusdikzi",
+        "update_at": "2026-03-27T16:14:29.365958+00:00",
+        "kecamatan": "BOGOR SELATAN",
+        "address": "",
+        "coordinate": [
+            0,
+            0
+        ],
+        "created_at": "2026-03-27T16:14:29.365942+00:00",
+        "email": "bsu.pelita.pusdikzi@pikapp.id",
+        "bsu_id": "BSU007",
+        "role": "user"
+    },
+    {
+        "uid": "Pdw4EOIp88PvrYvttW5Og1Ryhg63",
+        "phone_num": "",
+        "updated_at": "2026-04-12T18:17:24.972962+00:00",
+        "is_priority": false,
+        "bsu_name": "BSU Kelor Sempur",
+        "update_at": "2026-03-27T16:14:28.806969+00:00",
+        "kecamatan": "BOGOR TENGAH",
+        "address": "",
+        "coordinate": [
+            0,
+            0
+        ],
+        "created_at": "2026-03-27T16:14:28.806948+00:00",
+        "email": "bsu.kelor.sempur@pikapp.id",
+        "bsu_id": "BSU008",
+        "role": "user"
+    },
+    {
+        "uid": "h0xrI23HBTa87FShsDdU5p62svt1",
+        "phone_num": "",
+        "updated_at": "2026-04-12T18:17:25.897018+00:00",
+        "is_priority": false,
+        "bsu_name": "BSU Seroja",
+        "update_at": "2026-03-27T16:14:29.665225+00:00",
+        "kecamatan": "BOGOR TIMUR",
+        "address": "",
+        "coordinate": [
+            0,
+            0
+        ],
+        "created_at": "2026-03-27T16:14:29.665203+00:00",
+        "email": "bsu.seroja@pikapp.id",
+        "bsu_id": "BSU009",
+        "role": "user"
+    },
+    {
+        "uid": "S9z01BFCr7hZgmbUWGpXJbHhRqJ3",
+        "phone_num": "",
+        "updated_at": "2026-04-12T18:17:26.807086+00:00",
+        "is_priority": false,
+        "bsu_name": "BSU Clink",
+        "update_at": "2026-03-27T16:14:28.196045+00:00",
+        "kecamatan": "BOGOR UTARA",
+        "address": "",
+        "coordinate": [
+            0,
+            0
+        ],
+        "created_at": "2026-03-27T16:14:28.196026+00:00",
+        "email": "bsu.clink@pikapp.id",
+        "bsu_id": "BSU010",
+        "role": "user"
+    },
+    {
+        "uid": "mXO4fsv8B6Z2XTZvINzg7qHiP5s2",
+        "phone_num": "",
+        "updated_at": "2026-04-12T18:17:27.713086+00:00",
+        "is_priority": false,
+        "bsu_name": "BSU CAGAR DARLING",
+        "update_at": "2026-03-27T16:14:30.057321+00:00",
+        "kecamatan": "BOGOR UTARA",
+        "address": "",
+        "coordinate": [
+            0,
+            0
+        ],
+        "created_at": "2026-03-27T16:14:30.057295+00:00",
+        "email": "bsu.cagar.darling@pikapp.id",
+        "bsu_id": "BSU011",
+        "role": "user"
+    },
+    {
+        "uid": "dB0TtJeCXfUhW9M4lwfrG7EMF153",
+        "phone_num": "",
+        "updated_at": "2026-04-12T18:17:28.652843+00:00",
+        "is_priority": false,
+        "bsu_name": "BSU Cluster cimanggu",
+        "update_at": "2026-03-27T16:14:29.969189+00:00",
+        "kecamatan": "TANAH SAREAL",
+        "address": "",
+        "coordinate": [
+            0,
+            0
+        ],
+        "created_at": "2026-03-27T16:14:29.969171+00:00",
+        "email": "bsu.cluster.cimanggu@pikapp.id",
+        "bsu_id": "BSU012",
+        "role": "user"
+    },
+    {
+        "uid": "JFpCkSUIDuTZNEwz2MhUO68hbIP2",
+        "phone_num": "",
+        "updated_at": "2026-04-12T18:17:29.534600+00:00",
+        "is_priority": false,
+        "bsu_name": "Dwp Balaikota",
+        "update_at": "2026-03-27T16:14:29.837300+00:00",
+        "kecamatan": "BOGOR TENGAH",
+        "address": "",
+        "coordinate": [
+            0,
+            0
+        ],
+        "created_at": "2026-03-27T16:14:29.837274+00:00",
+        "email": "dwp.balaikota@pikapp.id",
+        "bsu_id": "BSU013",
+        "role": "user"
+    },
+    {
+        "uid": "eynbNQWVZVTLJtbZNVRuSoQgHaz2",
+        "phone_num": "",
+        "updated_at": "2026-04-12T18:17:30.411924+00:00",
+        "is_priority": false,
+        "bsu_name": "BSU AKASIA005",
+        "update_at": "2026-03-27T16:14:30.494210+00:00",
+        "kecamatan": "TANAH SAREAL",
+        "address": "",
+        "coordinate": [
+            0,
+            0
+        ],
+        "created_at": "2026-03-27T16:14:30.494175+00:00",
+        "email": "bsu.akasia005@pikapp.id",
+        "bsu_id": "BSU014",
+        "role": "user"
+    },
+    {
+        "uid": "5OOT0RUmW1O4DMZ4vCrO1WeVFox1",
+        "phone_num": "",
+        "updated_at": "2026-04-12T18:17:31.380934+00:00",
+        "is_priority": false,
+        "bsu_name": "BSU Bertasbih",
+        "update_at": "2026-03-27T16:14:27.775012+00:00",
+        "kecamatan": "BOGOR UTARA",
+        "address": "",
+        "coordinate": [
+            0,
+            0
+        ],
+        "created_at": "2026-03-27T16:14:27.774986+00:00",
+        "email": "bsu.bertasbih@pikapp.id",
+        "bsu_id": "BSU015",
+        "role": "user"
+    },
+    {
+        "uid": "FnHcGOxkRQe3qztkILZHrqHHG4Z2",
+        "phone_num": "",
+        "updated_at": "2026-04-12T18:17:32.346344+00:00",
+        "is_priority": false,
+        "bsu_name": "BSU SOKA",
+        "update_at": "2026-03-27T16:14:29.751463+00:00",
+        "kecamatan": "BOGOR TENGAH",
+        "address": "",
+        "coordinate": [
+            0,
+            0
+        ],
+        "created_at": "2026-03-27T16:14:29.751444+00:00",
+        "email": "bsu.soka@pikapp.id",
+        "bsu_id": "BSU016",
+        "role": "user"
+    },
+    {
+        "uid": "1JpC9tz0VCa6TtoEJoHupYBiva53",
+        "phone_num": "",
+        "updated_at": "2026-04-12T18:17:33.257122+00:00",
+        "is_priority": false,
+        "bsu_name": "BSU Macodes",
+        "update_at": "2026-03-27T16:14:29.014164+00:00",
+        "kecamatan": "TANAH SAREAL",
+        "address": "",
+        "coordinate": [
+            0,
+            0
+        ],
+        "created_at": "2026-03-27T16:14:29.014138+00:00",
+        "email": "bsu.macodes@pikapp.id",
+        "bsu_id": "BSU017",
+        "role": "user"
+    },
+    {
+        "bsu_name": "",
+        "phone_num": "",
+        "is_priority": false,
+        "created_at": "2026-03-26T17:00:00+00:00",
+        "update_at": "2026-03-26T17:00:00+00:00",
+        "address": "",
+        "kecamatan": "",
+        "coordinate": 
