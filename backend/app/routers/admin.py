@@ -1,533 +1,107 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from dependencies import verify_token
-from database import db
-from google.cloud.firestore import GeoPoint
-from firebase_admin import firestore, auth
-from datetime import date, datetime, timezone
-import re
-from pydantic import BaseModel
-from services.ga_models import jalankan_ga, format_jadwal, BSU
-import math
+from models.request_models import (
+    CreateUserRequest, PeriodeSettings, 
+    GenerateScheduleRequest, SchedulePublishRequest
+)
+from utils.firestore_helper import verify_admin_role
+from utils.response import success_response
+
+# Import Services
+from services.bsu_service import register_new_bsu, fetch_all_bsu
+from services.periode_service import fetch_periode_status, set_periode_status
+from services.request_service import (
+    fetch_all_schedule_requests, process_approve_request, process_reject_request
+)
+from services.schedule_service import (
+    create_generated_schedule, fetch_admin_schedule, modify_schedule_draft,
+    set_schedule_published, remove_schedule_slot, remove_monthly_schedule
+)
 
 router = APIRouter(tags=["admin"])
 
-@router.get("/verify-admin")
+# Default dependency for admin routes
 def admin_only(decoded_token: dict = Depends(verify_token)):
     uid = decoded_token["uid"]
+    return verify_admin_role(uid)
 
-    query = db.collection("users").where("uid", "==", uid).limit(1).stream()
-
-    user = None
-    for doc in query:
-        user = doc.to_dict()
-
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    if user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Forbidden")
-
+@router.get("/verify-admin")
+def check_admin(admin_user: dict = Depends(admin_only)):
     return {"message": "Welcome Admin!"}
 
-# Create New BSU Acc
-class CreateUserRequest(BaseModel):
-    bsu_name: str
-    address: str | None = None
-    kecamatan: str | None = None
-    phone_num: str | None = None
-
-class LocationModel(BaseModel):
-    latitude: float
-    longitude: float
-
-def generate_bsu_email(name: str):
-    name = name.lower()
-    name = re.sub(r"[^a-z0-9\s]", "", name)
-    name = ".".join(name.split())
-    return f"{name}@pikapp.id"
-
 @router.post("/admin/create-bsu")
-async def register_bsu(request: CreateUserRequest, decoded_token: dict = Depends(admin_only)):
-    try:
-        generated_email = generate_bsu_email(request.bsu_name)
-        default_password = "user123"
-        
-        user_record = auth.create_user(
-            email=generated_email,
-            password=default_password,
-            display_name=request.bsu_name
-        )
-        uid = user_record.uid
-        
-        # storing data to "user" collection
-        user_data = {
-            "uid": uid,
-            "email": generated_email,
-            "uname": generated_email.split("@")[0],
-            "role": "user",
-            "status": "active",
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-
-        db.collection("users").document(uid).set(user_data)
-
-
-        # storing data to "bsu" collection
-        bsu_data = {
-            "uid": user_record.uid,
-            "email": generated_email,
-            "bsu_name": request.bsu_name,
-            "address": request.address,
-            "kecamatan": request.kecamatan,
-            "phone_num": request.phone_num,
-            "role": "user",
-            "created_at": firestore.SERVER_TIMESTAMP
-        }
-
-        db.collection("bsu").document(uid).set(bsu_data)
-        
-        return {
-            "success": True,
-            "message": f"BSU berhasil didaftarkan dengan email: {generated_email}",
-            "data": {
-                "email": generated_email,
-                "password": default_password
-            }
-        }
-        
-    except auth.EmailAlreadyExistsError:
-        raise HTTPException(status_code=400, detail=f"Email {generated_email} sudah terdaftar. Coba nama BSU lain atau tambahkan karakter lain untuk membedakan akun.")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+def register_bsu(request: CreateUserRequest, admin_user: dict = Depends(admin_only)):
+    result = register_new_bsu(request)
+    return success_response(
+        data=result, 
+        message=f"BSU berhasil didaftarkan dengan email: {result['email']}"
+    )
 
 @router.get("/bsu-list")
-def get_all_bsu(decoded_token: dict = Depends(verify_token)):
-    uid = decoded_token["uid"]
-
-    # Verify if user is admin
-    query = db.collection("users").where("uid", "==", uid).limit(1).stream()
-    user = None
-    for doc in query:
-        user = doc.to_dict()
-
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    if user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Forbidden - Admin only access")
-
-    # Fetch all BSU documents
-    bsu_docs = db.collection("bsu").stream()
-    bsu_list = []
-    
-    for doc in bsu_docs:
-        data = doc.to_dict()
-        
-        # Safely handle coordinate parsing with NaN/Inf protection
-        coordinate = None
-        raw_coord = data.get("coordinate")
-        if raw_coord and isinstance(raw_coord, list) and len(raw_coord) >= 2:
-            try:
-                lat = float(raw_coord[0]) if raw_coord[0] is not None else 0.0
-                lon = float(raw_coord[1]) if raw_coord[1] is not None else 0.0
-                if math.isnan(lat) or math.isinf(lat): lat = 0.0
-                if math.isnan(lon) or math.isinf(lon): lon = 0.0
-                coordinate = {"lat": lat, "long": lon}
-            except (ValueError, TypeError):
-                coordinate = {"lat": 0.0, "long": 0.0}
-            
-        bsu_list.append({
-            "uid": data.get("uid"),
-            "email": data.get("email"),
-            "bsu_name": data.get("bsu_name"),
-            "bsu_id": data.get("bsu_id") or data.get("uid"),
-            "address": data.get("address"),
-            "kecamatan": data.get("kecamatan"),
-            "phone_num": data.get("phone_num"),
-            "is_priority": data.get("is_priority"),
-            "coordinate": coordinate
-        })
-
-    return {
-        "success": True,
-        "message": "Successfully fetched all BSU",
-        "data": bsu_list,
-        "total_bsu": len(bsu_list)
-    }
-
-class PeriodeSettings(BaseModel):
-    is_open: bool
+def get_all_bsu(admin_user: dict = Depends(admin_only)):
+    bsu_list = fetch_all_bsu()
+    return success_response(
+        data=bsu_list, 
+        message="Successfully fetched all BSU"
+    )
 
 @router.get("/periode/{tahun}/{bulan}")
 def get_periode_status(tahun: int, bulan: int, auth_status: dict = Depends(verify_token)):
-    doc_id = f"{tahun}_{bulan}"
-    doc = db.collection("periode_pengajuan").document(doc_id).get()
-    
-    if doc.exists:
-        return {"success": True, "data": doc.to_dict()}
-    
-    return {"success": True, "data": {"tahun": tahun, "bulan": bulan, "is_open": False}}
+    # Note: Ini bisa diakses user juga (sesuai kode asli yang tidak pakai admin_only)
+    data = fetch_periode_status(tahun, bulan)
+    return success_response(data=data)
 
 @router.put("/admin/periode/{tahun}/{bulan}")
-def update_periode_status(tahun: int, bulan: int, request: PeriodeSettings, auth_status: dict = Depends(admin_only)):
-    doc_id = f"{tahun}_{bulan}"
-    db.collection("periode_pengajuan").document(doc_id).set({
-        "tahun": tahun,
-        "bulan": bulan,
-        "is_open": request.is_open,
-        "updated_at": firestore.SERVER_TIMESTAMP
-    }, merge=True)
-    
-    return {"success": True, "message": f"Periode {tahun}-{bulan} is now {'open' if request.is_open else 'closed'}."}
+def update_periode_status(tahun: int, bulan: int, request: PeriodeSettings, admin_user: dict = Depends(admin_only)):
+    set_periode_status(tahun, bulan, request.is_open)
+    return success_response(
+        message=f"Periode {tahun}-{bulan} is now {'open' if request.is_open else 'closed'}."
+    )
 
 @router.get("/admin/schedule-requests")
-def get_schedule_requests(auth_status: dict = Depends(admin_only)):
-    # Ambil semua data BSU dan buat dictionary untuk pencarian cepat
-    bsu_docs = db.collection("bsu").stream()
-    bsu_map = {}
-    for b_doc in bsu_docs:
-        b_data = b_doc.to_dict()
-        b_id = b_data.get("bsu_id") or b_data.get("uid")
-        if b_id:
-            bsu_map[b_id] = {
-                "bsu_name": b_data.get("bsu_name", ""),
-                "kecamatan": b_data.get("kecamatan", ""),
-                "address": b_data.get("address", ""),
-                "phone_num": b_data.get("phone_num", "")
-            }
-
-    docs = db.collection("schedule_requests").stream()
-    data = []
-    for doc in docs:
-        req_data = doc.to_dict()
-        bsu_id = req_data.get("bsu_id")
-        
-        # Tambahkan detail BSU ke dalam data request
-        req_data["bsu_detail"] = bsu_map.get(bsu_id, {})
-        
-        data.append(req_data)
-        
-    return {"success": True, "data": data}
+def get_schedule_requests(admin_user: dict = Depends(admin_only)):
+    data = fetch_all_schedule_requests()
+    return success_response(data=data)
 
 @router.put("/admin/schedule-requests/{request_id}/approve")
-def approve_request(request_id: str, auth_status: dict = Depends(admin_only)):
-    doc_ref = db.collection("schedule_requests").document(request_id)
-    doc = doc_ref.get()
-    
-    if not doc.exists:
-        raise HTTPException(status_code=404, detail="Request not found")
-        
-    req_data = doc.to_dict()
-    jenis = req_data.get("jenis_pengajuan", "baru")
-    tahun = req_data.get("tahun")
-    bulan = req_data.get("bulan")
-    bsu_id = req_data.get("bsu_id")
-    
-    if jenis in ["reschedule", "batal"]:
-        # Update the final schedule document
-        jadwal_doc_id = f"{tahun}_{bulan}"
-        jadwal_ref = db.collection("jadwal").document(jadwal_doc_id)
-        jadwal_doc = jadwal_ref.get()
-        
-        if jadwal_doc.exists:
-            jadwal_data = jadwal_doc.to_dict()
-            hari_list = jadwal_data.get("hari_list", [])
-            
-            # Find and remove from old date
-            old_date = req_data.get("tanggal_lama")
-            if old_date:
-                for h in hari_list:
-                    if h["tanggal"] == old_date:
-                        h["slots"] = [s for s in h["slots"] if s.get("bsu_id") != bsu_id]
-                        # Recalculate total_vol
-                        h["total_vol"] = sum(s.get("vol_kg", 0.0) for s in h["slots"])
-            
-            # If reschedule, add to new date
-            if jenis == "reschedule":
-                new_date = req_data.get("tanggal_baru")
-                if new_date:
-                    # find the new date in hari_list or create it
-                    target_h = next((h for h in hari_list if h["tanggal"] == new_date), None)
-                    
-                    # Fetch BSU detail to construct the slot
-                    bsu_doc_ref = db.collection("bsu").document(bsu_id)
-                    bsu_doc = bsu_doc_ref.get()
-                    
-                    if not bsu_doc.exists:
-                        # try query by bsu_id field if doc ID (uid) didn't match
-                        bsu_docs = db.collection("bsu").where("bsu_id", "==", bsu_id).limit(1).stream()
-                        bsu_doc = next(bsu_docs, None)
-                    
-                    if bsu_doc:
-                        bsu_data = bsu_doc.to_dict()
-                        lat, lon = 0.0, 0.0
-                        coord = bsu_data.get("coordinate")
-                        if coord and isinstance(coord, list) and len(coord) >= 2:
-                            lat = float(coord[0]) if coord[0] is not None else 0.0
-                            lon = float(coord[1]) if coord[1] is not None else 0.0
-                            
-                        slot_data = {
-                            "bsu_id": bsu_id,
-                            "nama": bsu_data.get("bsu_name", ""),
-                            "kecamatan": bsu_data.get("kecamatan", ""),
-                            "vol_kg": float(req_data.get("estimasi_vol_kg", 0.0)),
-                            "lat": lat,
-                            "lon": lon,
-                            "req_terpenuhi": True
-                        }
-                        
-                        if target_h:
-                            target_h["slots"].append(slot_data)
-                            target_h["total_vol"] += slot_data["vol_kg"]
-                        else:
-                            hari_list.append({
-                                "tanggal": new_date,
-                                "total_vol": slot_data["vol_kg"],
-                                "slots": [slot_data]
-                            })
-                            # Sort by date
-                            hari_list.sort(key=lambda x: x["tanggal"])
-            
-            jadwal_ref.update({
-                "hari_list": hari_list,
-                "updated_at": firestore.SERVER_TIMESTAMP
-            })
-            
-    doc_ref.update({"status": "approved", "updated_at": firestore.SERVER_TIMESTAMP})
-    return {"success": True, "message": "Request approved"}
+def approve_request(request_id: str, admin_user: dict = Depends(admin_only)):
+    process_approve_request(request_id)
+    return success_response(message="Request approved")
 
 @router.put("/admin/schedule-requests/{request_id}/reject")
-def reject_request(request_id: str, auth_status: dict = Depends(admin_only)):
-    doc_ref = db.collection("schedule_requests").document(request_id)
-    if not doc_ref.get().exists:
-        raise HTTPException(status_code=404, detail="Request not found")
-        
-    doc_ref.update({"status": "rejected", "updated_at": firestore.SERVER_TIMESTAMP})
-    return {"success": True, "message": "Request rejected"}
-
-class GenerateScheduleRequest(BaseModel):
-    tahun: int
-    bulan: int
-    jumlah_kendaraan: int = 1
-    kapasitas_kendaraan: float = 1000.0
-    kuota_kunjungan: int = 3
+def reject_request(request_id: str, admin_user: dict = Depends(admin_only)):
+    process_reject_request(request_id)
+    return success_response(message="Request rejected")
 
 @router.post("/generate-schedule")
-def generate_schedule(request: GenerateScheduleRequest, auth_status: dict = Depends(admin_only)):
-    tahun = request.tahun
-    bulan = request.bulan
-    
-    req_docs = db.collection("schedule_requests").where("tahun", "==", tahun).where("bulan", "==", bulan).stream()
-    
-    bsu_requests = {}
-    requested_bsu_ids = set()
-    estimasi_map = {}
-    
-    for doc in req_docs:
-        data = doc.to_dict()
-        
-        # Filter status approved and jenis_pengajuan baru
-        # For backward compatibility, if status or jenis_pengajuan doesn't exist, assume it's valid
-        if data.get("status", "approved") != "approved":
-            continue
-        if data.get("jenis_pengajuan", "baru") != "baru":
-            continue
-
-        bsu_id = data.get("bsu_id")
-        requested_bsu_ids.add(bsu_id)
-        estimasi_map[bsu_id] = data.get("estimasi_vol_kg", 0.0)
-        
-        tgl_str = data.get("tanggal_request")
-        if tgl_str:
-            try:
-                y, m, d = map(int, tgl_str.split('-'))
-                bsu_requests[bsu_id] = date(y, m, d)
-            except:
-                pass
-                
-    if not requested_bsu_ids:
-        raise HTTPException(status_code=400, detail="No schedule requests found for this period.")
-        
-    bsu_list = []
-    seen_ids = set()
-    bsu_docs = db.collection("bsu").stream()
-    
-    for doc in bsu_docs:
-        data = doc.to_dict()
-        bsu_id = data.get("bsu_id") or data.get("uid")
-        
-        if bsu_id in requested_bsu_ids and bsu_id not in seen_ids:
-            seen_ids.add(bsu_id)
-            lat, lon = 0.0, 0.0
-            coord = data.get("coordinate")
-            if coord and isinstance(coord, list) and len(coord) >= 2:
-                try:
-                    lat = float(coord[0]) if coord[0] is not None else 0.0
-                    lon = float(coord[1]) if coord[1] is not None else 0.0
-                    if math.isnan(lat) or math.isinf(lat): lat = 0.0
-                    if math.isnan(lon) or math.isinf(lon): lon = 0.0
-                except (ValueError, TypeError):
-                    lat, lon = 0.0, 0.0
-            
-            vol = estimasi_map.get(bsu_id, 0.0)
-            if math.isnan(vol) or math.isinf(vol): vol = 0.0
-                
-            bsu_list.append(BSU(
-                bsu_id=bsu_id,
-                nama=data.get("bsu_name", "Unknown"),
-                kecamatan=data.get("kecamatan", "Unknown"),
-                lat=lat,
-                lon=lon,
-                estimasi_vol_kg=float(vol)
-            ))
-            
-    if not bsu_list:
-        raise HTTPException(status_code=400, detail="BSU data not found for the requests.")
-        
-    try:
-        kapasitas_harian = request.jumlah_kendaraan * request.kapasitas_kendaraan
-        max_bsu_harian = request.jumlah_kendaraan * request.kuota_kunjungan
-        jadwal_chromosome, history = jalankan_ga(
-            tahun, bulan, bsu_list, bsu_requests,
-            kapasitas=kapasitas_harian, max_bsu=max_bsu_harian
-        )
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to generate schedule: {str(e)}")
-        
-    formatted_jadwal = format_jadwal(jadwal_chromosome)
-    
-    doc_id = f"{tahun}_{bulan}"
-    jadwal_data = {
-        "tahun": tahun,
-        "bulan": bulan,
-        "status": "draft",
-        "hari_list": formatted_jadwal,
-        "created_at": firestore.SERVER_TIMESTAMP,
-        "updated_at": firestore.SERVER_TIMESTAMP
-    }
-    
-    db.collection("jadwal").document(doc_id).set(jadwal_data)
-    
-    return {
-        "success": True,
-        "message": "Schedule generated successfully and saved as draft.",
-        "data": {
-            "tahun": tahun,
-            "bulan": bulan,
-            "status": "draft",
-            "hari_list": formatted_jadwal
-        }
-    }
+def generate_schedule(request: GenerateScheduleRequest, admin_user: dict = Depends(admin_only)):
+    data = create_generated_schedule(request)
+    return success_response(
+        data=data,
+        message="Schedule generated successfully and saved as draft."
+    )
 
 @router.get("/schedule/{tahun}/{bulan}")
-def get_admin_schedule(tahun: int, bulan: int, auth_status: dict = Depends(admin_only)):
-    doc_id = f"{tahun}_{bulan}"
-    doc = db.collection("jadwal").document(doc_id).get()
-    
-    if not doc.exists:
-        raise HTTPException(status_code=404, detail="Schedule not found")
-        
-    return {
-        "success": True,
-        "data": doc.to_dict()
-    }
-
-class SchedulePublishRequest(BaseModel):
-    hari_list: list[dict]
+def get_admin_schedule(tahun: int, bulan: int, admin_user: dict = Depends(admin_only)):
+    data = fetch_admin_schedule(tahun, bulan)
+    return success_response(data=data)
 
 @router.put("/schedule/{tahun}/{bulan}/update-draft")
-def update_schedule_draft(tahun: int, bulan: int, request: SchedulePublishRequest, auth_status: dict = Depends(admin_only)):
-    doc_id = f"{tahun}_{bulan}"
-    doc_ref = db.collection("jadwal").document(doc_id)
-    
-    if not doc_ref.get().exists:
-        raise HTTPException(status_code=404, detail="Schedule draft not found")
-        
-    doc_ref.update({
-        "hari_list": request.hari_list,
-        "updated_at": firestore.SERVER_TIMESTAMP
-    })
-    
-    return {
-        "success": True,
-        "message": "Draft updated successfully"
-    }
+def update_schedule_draft(tahun: int, bulan: int, request: SchedulePublishRequest, admin_user: dict = Depends(admin_only)):
+    modify_schedule_draft(tahun, bulan, request.hari_list)
+    return success_response(message="Draft updated successfully")
 
 @router.put("/schedule/{tahun}/{bulan}/publish")
-def publish_schedule(tahun: int, bulan: int, request: SchedulePublishRequest, auth_status: dict = Depends(admin_only)):
-    doc_id = f"{tahun}_{bulan}"
-    doc_ref = db.collection("jadwal").document(doc_id)
-    
-    if not doc_ref.get().exists:
-        raise HTTPException(status_code=404, detail="Schedule draft not found")
-        
-    doc_ref.update({
-        "status": "published",
-        "hari_list": request.hari_list,
-        "updated_at": firestore.SERVER_TIMESTAMP
-    })
-    
-    return {
-        "success": True,
-        "message": "Schedule published successfully"
-    }
+def publish_schedule(tahun: int, bulan: int, request: SchedulePublishRequest, admin_user: dict = Depends(admin_only)):
+    set_schedule_published(tahun, bulan, request.hari_list)
+    return success_response(message="Schedule published successfully")
 
 @router.delete("/schedule/{tahun}/{bulan}/slot")
-def delete_schedule_slot(
-    tahun: int, 
-    bulan: int, 
-    tanggal: str, 
-    bsu_id: str, 
-    auth_status: dict = Depends(admin_only)
-):
-    doc_id = f"{tahun}_{bulan}"
-    doc_ref = db.collection("jadwal").document(doc_id)
-    doc = doc_ref.get()
-    
-    if not doc.exists:
-        raise HTTPException(status_code=404, detail="Schedule not found")
-        
-    jadwal_data = doc.to_dict()
-    hari_list = jadwal_data.get("hari_list", [])
-    
-    found = False
-    for h in hari_list:
-        if h["tanggal"] == tanggal:
-            original_len = len(h["slots"])
-            h["slots"] = [s for s in h["slots"] if s.get("bsu_id") != bsu_id]
-            
-            if len(h["slots"]) < original_len:
-                found = True
-                # Recalculate total_vol
-                h["total_vol"] = sum(s.get("vol_kg", 0.0) for s in h["slots"])
-            break
-            
-    if not found:
-        raise HTTPException(status_code=404, detail=f"Slot for BSU {bsu_id} on {tanggal} not found")
-        
-    doc_ref.update({
-        "hari_list": hari_list,
-        "updated_at": firestore.SERVER_TIMESTAMP
-    })
-    
-    return {
-        "success": True, 
-        "message": f"Successfully deleted BSU {bsu_id} from {tanggal}"
-    }
+def delete_schedule_slot(tahun: int, bulan: int, tanggal: str, bsu_id: str, admin_user: dict = Depends(admin_only)):
+    remove_schedule_slot(tahun, bulan, tanggal, bsu_id)
+    return success_response(message=f"Successfully deleted BSU {bsu_id} from {tanggal}")
 
 @router.delete("/schedule/{tahun}/{bulan}")
-def delete_monthly_schedule(tahun: int, bulan: int, auth_status: dict = Depends(admin_only)):
-    doc_id = f"{tahun}_{bulan}"
-    doc_ref = db.collection("jadwal").document(doc_id)
-    
-    if not doc_ref.get().exists:
-        raise HTTPException(status_code=404, detail="Schedule not found")
-        
-    doc_ref.delete()
-    
-    return {
-        "success": True,
-        "message": f"Schedule for {tahun}-{bulan} has been deleted"
-    }
+def delete_monthly_schedule(tahun: int, bulan: int, admin_user: dict = Depends(admin_only)):
+    remove_monthly_schedule(tahun, bulan)
+    return success_response(message=f"Schedule for {tahun}-{bulan} has been deleted")
