@@ -58,6 +58,35 @@ def hari_operasional(tahun: int, bulan: int) -> list[date]:
         d += timedelta(days=1)
     return result
 
+def f_wilayah(chromosome) -> float:
+    skor_total = 0.0
+
+    for h in chromosome:
+        if len(h.slots) < 2:
+            skor_total += 1.0 # wkecamatan = 0.7 + wjarak = 0.3
+            continue
+
+        # mengelompokkan berdasarkan kecamatan
+        kecamatans = [s.kecamatan for s in h.slots]
+        dominan = max(set(kecamatans), key=kecamatans.count)
+        skor_kecamatan = kecamatans.count(dominan) / len(kecamatans)
+        # semua sama kecamatan → 1.0 | 1 dari 3 beda → 0.67
+
+        # menghitung kedekatan jarak dengan haversine
+        jarak_list = [
+            haversine(h.slots[i].lat, h.slots[i].lon,
+                      h.slots[i+1].lat, h.slots[i+1].lon)
+            for i in range(len(h.slots) - 1)
+        ]
+        rata_jarak = sum(jarak_list) / len(jarak_list)
+        skor_jarak = max(0.0, 1.0 - rata_jarak / 15.0)
+        # jarak 0 km → 1.0 | jarak 15 km → 0.0
+
+        # skor total
+        skor_total += 0.7 * skor_kecamatan + 0.3 * skor_jarak
+
+    return skor_total / len(chromosome)
+
 # Fitness
 def fitness(c: Chromosome, requests: dict, kapasitas=1000.0, min_bsu=1, max_bsu=3, w1=0.30, w2=0.25, w3=0.45) -> float:
     if not c: return 0.0001
@@ -88,7 +117,9 @@ def fitness(c: Chromosome, requests: dict, kapasitas=1000.0, min_bsu=1, max_bsu=
             for i in range(len(h.slots)-1)) / max(len(h.slots)-1, 1)
         for h in c
     ]
-    f_jarak = max(0.0, 1.0 - (sum(jarak_list)/len(jarak_list)) / 15.0) if jarak_list else 0.0
+
+    # f_jarak = max(0.0, 1.0 - (sum(jarak_list)/len(jarak_list)) / 15.0) if jarak_list else 0.0
+    f_jwilayah = f_wilayah(c)
 
     vols = [h.total_vol for h in c]
     mean_v = sum(vols)/len(vols) if vols else 0.0
@@ -102,7 +133,7 @@ def fitness(c: Chromosome, requests: dict, kapasitas=1000.0, min_bsu=1, max_bsu=
     if penalty > 0:
         return 0.1 / (1.0 + penalty)
 
-    return round(w1*f_jarak + w2*f_beban + w3*f_request, 6)
+    return round(w1*f_jwilayah + w2*f_beban + w3*f_request, 6)
 
 def buat_kromosom(hari_ops: list[date], bsu_list: list[BSU],
                   requests: dict, kapasitas: float, min_bsu: int, max_bsu: int) -> Chromosome:
@@ -192,7 +223,7 @@ def crossover(p1: Chromosome, p2: Chromosome, kapasitas: float, min_bsu: int, ma
     return sorted(child_map.values(), key=lambda h: h.tanggal)
 
 # Swap Mutation
-def mutasi(c: Chromosome, kapasitas: float, pm=0.12) -> Chromosome:
+def mutasi(c: Chromosome, kapasitas: float, pm=0.05) -> Chromosome:
     if random.random() > pm or len(c) < 2: return c
     r = copy.deepcopy(c)
     i, j = random.sample(range(len(r)), 2)
@@ -228,7 +259,7 @@ def optimasi_urutan(c: Chromosome) -> Chromosome:
 # algortima Genetika
 def jalankan_ga(tahun, bulan, bsu_list, requests,
                 kapasitas=1000.0, min_bsu=1, max_bsu=3,
-                pop_size=80, max_gen=250, pc=0.85, pm=0.12,
+                pop_size=80, max_gen=250, pc=0.85, pm=0.05,
                 w1=0.30, w2=0.25, w3=0.45) -> tuple[Chromosome, list[float]]:
  
     hari_ops = hari_operasional(tahun, bulan)
