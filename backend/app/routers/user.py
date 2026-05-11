@@ -190,34 +190,100 @@ def get_published_schedule(tahun: int, bulan: int, decoded_token: dict = Depends
     }
 
 @router.get("/my-schedule")
-def get_my_schedule(tahun: int, bulan: int, decoded_token: dict = Depends(verify_token)):
+def get_my_schedule(tahun: int,bulan: int,decoded_token: dict = Depends(verify_token)):
     uid = decoded_token["uid"]
-    
-    # get bsu_id from bsu collection
-    bsu_docs = db.collection("bsu").where("uid", "==", uid).limit(1).stream()
+
+    # ambil data BSU user login
+    bsu_docs = (
+        db.collection("bsu")
+        .where("uid", "==", uid)
+        .limit(1)
+        .stream()
+    )
+
     bsu_doc = next(bsu_docs, None)
     if not bsu_doc:
-        raise HTTPException(status_code=404, detail="BSU not found")
-        
-    bsu_id = bsu_doc.to_dict().get("bsu_id", uid)
-    
-    # query schedule for this month
+        raise HTTPException(
+            status_code=404,
+            detail="BSU not found"
+        )
+
+    bsu_data = bsu_doc.to_dict()
+
+    bsu_id = bsu_data.get("bsu_id")
+
+    # ambil jadwal bulan terkait
     doc_id = f"{tahun}_{bulan}"
-    jadwal_doc = db.collection("jadwal").document(doc_id).get()
-    
-    my_dates = []
-    
-    if jadwal_doc.exists:
-        jadwal_data = jadwal_doc.to_dict()
-        if jadwal_data.get("status") == "published":
-            hari_list = jadwal_data.get("hari_list", [])
-            for h in hari_list:
-                # check if bsu_id is in slots
-                if any(s.get("bsu_id") == bsu_id for s in h.get("slots", [])):
-                    my_dates.append(h.get("tanggal"))
-                    
+
+    jadwal_doc = (
+        db.collection("jadwal")
+        .document(doc_id)
+        .get()
+    )
+
+    if not jadwal_doc.exists:
+        raise HTTPException(
+            status_code=404,
+            detail="Schedule not found"
+        )
+
+    jadwal_data = jadwal_doc.to_dict()
+    if jadwal_data.get("status") != "published":
+        raise HTTPException(
+            status_code=404,
+            detail="Schedule not published yet"
+        )
+
+    hari_list = jadwal_data.get("hari_list", [])
+
+    my_schedule = []
+
+    # cari slot milik user
+    for hari in hari_list:
+        user_slot = next(
+            (
+                slot for slot in hari.get("slots", [])
+                if slot.get("bsu_id") == bsu_id
+            ),
+            None
+        )
+
+        if user_slot:
+            my_schedule.append({
+                "tanggal": hari.get("tanggal"),
+                "vol_kg": user_slot.get("vol_kg", 0.0),
+                "req_terpenuhi": user_slot.get("req_terpenuhi", False)
+            })
+
     return {
         "success": True,
-        "message": "Successfully fetched personal schedule dates",
-        "data": my_dates
+        "message": "Successfully fetched my schedule",
+        "data": my_schedule
+    }
+
+@router.delete("/schedule-request/{request_id}")
+def delete_my_request(request_id: str, decoded_token: dict = Depends(verify_token)):
+    uid = decoded_token["uid"]
+    
+    doc_ref = db.collection("schedule_requests").document(request_id)
+    doc = doc_ref.get()
+    
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail="Request not found")
+        
+    data = doc.to_dict()
+    
+    # Security check: only owner can delete
+    if data.get("uid") != uid:
+        raise HTTPException(status_code=403, detail="Forbidden - You can only delete your own requests")
+        
+    # Optional: only delete if still pending
+    if data.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="Cannot delete request that is already processed (approved/rejected)")
+        
+    doc_ref.delete()
+    
+    return {
+        "success": True,
+        "message": "Schedule request deleted successfully"
     }

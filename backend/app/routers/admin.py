@@ -87,7 +87,7 @@ async def register_bsu(request: CreateUserRequest, decoded_token: dict = Depends
         db.collection("bsu").document(uid).set(bsu_data)
         
         return {
-            "status": "success",
+            "success": True,
             "message": f"BSU berhasil didaftarkan dengan email: {generated_email}",
             "data": {
                 "email": generated_email,
@@ -158,8 +158,8 @@ def get_all_bsu(decoded_token: dict = Depends(verify_token)):
 class PeriodeSettings(BaseModel):
     is_open: bool
 
-@router.get("/admin/periode/{tahun}/{bulan}")
-def get_periode_status(tahun: int, bulan: int, auth_status: dict = Depends(admin_only)):
+@router.get("/periode/{tahun}/{bulan}")
+def get_periode_status(tahun: int, bulan: int, auth_status: dict = Depends(verify_token)):
     doc_id = f"{tahun}_{bulan}"
     doc = db.collection("periode_pengajuan").document(doc_id).get()
     
@@ -182,10 +182,31 @@ def update_periode_status(tahun: int, bulan: int, request: PeriodeSettings, auth
 
 @router.get("/admin/schedule-requests")
 def get_schedule_requests(auth_status: dict = Depends(admin_only)):
+    # Ambil semua data BSU dan buat dictionary untuk pencarian cepat
+    bsu_docs = db.collection("bsu").stream()
+    bsu_map = {}
+    for b_doc in bsu_docs:
+        b_data = b_doc.to_dict()
+        b_id = b_data.get("bsu_id") or b_data.get("uid")
+        if b_id:
+            bsu_map[b_id] = {
+                "bsu_name": b_data.get("bsu_name", ""),
+                "kecamatan": b_data.get("kecamatan", ""),
+                "address": b_data.get("address", ""),
+                "phone_num": b_data.get("phone_num", "")
+            }
+
     docs = db.collection("schedule_requests").stream()
     data = []
     for doc in docs:
-        data.append(doc.to_dict())
+        req_data = doc.to_dict()
+        bsu_id = req_data.get("bsu_id")
+        
+        # Tambahkan detail BSU ke dalam data request
+        req_data["bsu_detail"] = bsu_map.get(bsu_id, {})
+        
+        data.append(req_data)
+        
     return {"success": True, "data": data}
 
 @router.put("/admin/schedule-requests/{request_id}/approve")
@@ -287,6 +308,9 @@ def reject_request(request_id: str, auth_status: dict = Depends(admin_only)):
 class GenerateScheduleRequest(BaseModel):
     tahun: int
     bulan: int
+    jumlah_kendaraan: int = 1
+    kapasitas_kendaraan: float = 1000.0
+    kuota_kunjungan: int = 3
 
 @router.post("/generate-schedule")
 def generate_schedule(request: GenerateScheduleRequest, auth_status: dict = Depends(admin_only)):
@@ -361,7 +385,12 @@ def generate_schedule(request: GenerateScheduleRequest, auth_status: dict = Depe
         raise HTTPException(status_code=400, detail="BSU data not found for the requests.")
         
     try:
-        jadwal_chromosome, history = jalankan_ga(tahun, bulan, bsu_list, bsu_requests)
+        kapasitas_harian = request.jumlah_kendaraan * request.kapasitas_kendaraan
+        max_bsu_harian = request.jumlah_kendaraan * request.kuota_kunjungan
+        jadwal_chromosome, history = jalankan_ga(
+            tahun, bulan, bsu_list, bsu_requests,
+            kapasitas=kapasitas_harian, max_bsu=max_bsu_harian
+        )
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -408,6 +437,24 @@ def get_admin_schedule(tahun: int, bulan: int, auth_status: dict = Depends(admin
 class SchedulePublishRequest(BaseModel):
     hari_list: list[dict]
 
+@router.put("/schedule/{tahun}/{bulan}/update-draft")
+def update_schedule_draft(tahun: int, bulan: int, request: SchedulePublishRequest, auth_status: dict = Depends(admin_only)):
+    doc_id = f"{tahun}_{bulan}"
+    doc_ref = db.collection("jadwal").document(doc_id)
+    
+    if not doc_ref.get().exists:
+        raise HTTPException(status_code=404, detail="Schedule draft not found")
+        
+    doc_ref.update({
+        "hari_list": request.hari_list,
+        "updated_at": firestore.SERVER_TIMESTAMP
+    })
+    
+    return {
+        "success": True,
+        "message": "Draft updated successfully"
+    }
+
 @router.put("/schedule/{tahun}/{bulan}/publish")
 def publish_schedule(tahun: int, bulan: int, request: SchedulePublishRequest, auth_status: dict = Depends(admin_only)):
     doc_id = f"{tahun}_{bulan}"
@@ -425,4 +472,62 @@ def publish_schedule(tahun: int, bulan: int, request: SchedulePublishRequest, au
     return {
         "success": True,
         "message": "Schedule published successfully"
+    }
+
+@router.delete("/schedule/{tahun}/{bulan}/slot")
+def delete_schedule_slot(
+    tahun: int, 
+    bulan: int, 
+    tanggal: str, 
+    bsu_id: str, 
+    auth_status: dict = Depends(admin_only)
+):
+    doc_id = f"{tahun}_{bulan}"
+    doc_ref = db.collection("jadwal").document(doc_id)
+    doc = doc_ref.get()
+    
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+        
+    jadwal_data = doc.to_dict()
+    hari_list = jadwal_data.get("hari_list", [])
+    
+    found = False
+    for h in hari_list:
+        if h["tanggal"] == tanggal:
+            original_len = len(h["slots"])
+            h["slots"] = [s for s in h["slots"] if s.get("bsu_id") != bsu_id]
+            
+            if len(h["slots"]) < original_len:
+                found = True
+                # Recalculate total_vol
+                h["total_vol"] = sum(s.get("vol_kg", 0.0) for s in h["slots"])
+            break
+            
+    if not found:
+        raise HTTPException(status_code=404, detail=f"Slot for BSU {bsu_id} on {tanggal} not found")
+        
+    doc_ref.update({
+        "hari_list": hari_list,
+        "updated_at": firestore.SERVER_TIMESTAMP
+    })
+    
+    return {
+        "success": True, 
+        "message": f"Successfully deleted BSU {bsu_id} from {tanggal}"
+    }
+
+@router.delete("/schedule/{tahun}/{bulan}")
+def delete_monthly_schedule(tahun: int, bulan: int, auth_status: dict = Depends(admin_only)):
+    doc_id = f"{tahun}_{bulan}"
+    doc_ref = db.collection("jadwal").document(doc_id)
+    
+    if not doc_ref.get().exists:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+        
+    doc_ref.delete()
+    
+    return {
+        "success": True,
+        "message": f"Schedule for {tahun}-{bulan} has been deleted"
     }
