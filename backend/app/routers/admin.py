@@ -97,9 +97,9 @@ def publish_schedule(tahun: int, bulan: int, request: SchedulePublishRequest, ad
     return success_response(message="Schedule published successfully")
 
 @router.delete("/schedule/{tahun}/{bulan}/slot")
-def delete_schedule_slot(tahun: int, bulan: int, tanggal: str, bsu_id: str, admin_user: dict = Depends(admin_only)):
-    remove_schedule_slot(tahun, bulan, tanggal, bsu_id)
-    return success_response(message=f"Successfully deleted BSU {bsu_id} from {tanggal}")
+def delete_schedule_slot(tahun: int, bulan: int, tanggal: str, uid: str, admin_user: dict = Depends(admin_only)):
+    remove_schedule_slot(tahun, bulan, tanggal, uid)
+    return success_response(message=f"Successfully deleted BSU slot on {tanggal}")
 
 @router.delete("/schedule/{tahun}/{bulan}")
 def delete_monthly_schedule(tahun: int, bulan: int, admin_user: dict = Depends(admin_only)):

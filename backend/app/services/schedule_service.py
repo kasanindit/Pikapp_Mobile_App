@@ -25,15 +25,18 @@ def create_generated_schedule(request: GenerateScheduleRequest):
         if data.get("jenis_pengajuan", "baru") != "baru":
             continue
 
-        bsu_id = data.get("bsu_id")
-        requested_bsu_ids.add(bsu_id)
-        estimasi_map[bsu_id] = data.get("estimasi_vol_kg", 0.0)
+        # uid adalah kunci relasi utama (bsu_id hanya display)
+        uid = data.get("uid")
+        if not uid:
+            continue
+        requested_bsu_ids.add(uid)
+        estimasi_map[uid] = data.get("estimasi_vol_kg", 0.0)
         
         tgl_str = data.get("tanggal_request")
         if tgl_str:
             try:
                 y, m, d = map(int, tgl_str.split('-'))
-                bsu_requests[bsu_id] = date(y, m, d)
+                bsu_requests[uid] = date(y, m, d)
             except:
                 pass
                 
@@ -46,10 +49,13 @@ def create_generated_schedule(request: GenerateScheduleRequest):
     
     for doc in bsu_docs:
         data = doc.to_dict()
-        bsu_id = data.get("bsu_id") or data.get("uid")
+        # uid adalah primary identifier, bsu_id hanya untuk display
+        uid = data.get("uid")
+        if not uid:
+            continue
         
-        if bsu_id in requested_bsu_ids and bsu_id not in seen_ids:
-            seen_ids.add(bsu_id)
+        if uid in requested_bsu_ids and uid not in seen_ids:
+            seen_ids.add(uid)
             lat, lon = 0.0, 0.0
             coord = data.get("coordinate")
             if coord and isinstance(coord, list) and len(coord) >= 2:
@@ -61,11 +67,11 @@ def create_generated_schedule(request: GenerateScheduleRequest):
                 except (ValueError, TypeError):
                     lat, lon = 0.0, 0.0
             
-            vol = estimasi_map.get(bsu_id, 0.0)
+            vol = estimasi_map.get(uid, 0.0)
             if math.isnan(vol) or math.isinf(vol): vol = 0.0
                 
             bsu_list.append(BSU(
-                bsu_id=bsu_id,
+                bsu_id=uid,   # BSU.bsu_id diisi uid agar GA menggunakan uid sebagai key internal
                 nama=data.get("bsu_name", "Unknown"),
                 kecamatan=data.get("kecamatan", "Unknown"),
                 lat=lat,
@@ -143,7 +149,7 @@ def set_schedule_published(tahun: int, bulan: int, hari_list: list):
         "updated_at": firestore.SERVER_TIMESTAMP
     })
 
-def remove_schedule_slot(tahun: int, bulan: int, tanggal: str, bsu_id: str):
+def remove_schedule_slot(tahun: int, bulan: int, tanggal: str, uid: str):
     doc_id = f"{tahun}_{bulan}"
     doc_ref = db.collection("jadwal").document(doc_id)
     doc = doc_ref.get()
@@ -158,7 +164,8 @@ def remove_schedule_slot(tahun: int, bulan: int, tanggal: str, bsu_id: str):
     for h in hari_list:
         if h["tanggal"] == tanggal:
             original_len = len(h["slots"])
-            h["slots"] = [s for s in h["slots"] if s.get("bsu_id") != bsu_id]
+            # Hapus slot berdasarkan uid (relasi utama)
+            h["slots"] = [s for s in h["slots"] if s.get("uid") != uid]
             
             if len(h["slots"]) < original_len:
                 found = True
@@ -166,7 +173,7 @@ def remove_schedule_slot(tahun: int, bulan: int, tanggal: str, bsu_id: str):
             break
             
     if not found:
-        raise HTTPException(status_code=404, detail=f"Slot for BSU {bsu_id} on {tanggal} not found")
+        raise HTTPException(status_code=404, detail=f"Slot for uid {uid} on {tanggal} not found")
         
     doc_ref.update({
         "hari_list": hari_list,
@@ -197,12 +204,7 @@ def fetch_published_schedule(tahun: int, bulan: int):
     return data.get("hari_list", [])
 
 def fetch_my_schedule(uid: str, tahun: int, bulan: int):
-    bsu_data = get_bsu_by_uid(uid)
-    if not bsu_data:
-        raise HTTPException(status_code=404, detail="BSU not found")
-
-    bsu_id = bsu_data.get("bsu_id")
-
+    # uid sudah tersedia dari token — tidak perlu lookup BSU hanya untuk dapat id
     doc_id = f"{tahun}_{bulan}"
     jadwal_doc = db.collection("jadwal").document(doc_id).get()
 
@@ -217,8 +219,9 @@ def fetch_my_schedule(uid: str, tahun: int, bulan: int):
     my_schedule = []
 
     for hari in hari_list:
+        # Cari slot milik user ini — bandingkan dengan uid (relasi utama)
         user_slot = next(
-            (slot for slot in hari.get("slots", []) if slot.get("bsu_id") == bsu_id),
+            (slot for slot in hari.get("slots", []) if slot.get("uid") == uid),
             None
         )
 
@@ -230,3 +233,5 @@ def fetch_my_schedule(uid: str, tahun: int, bulan: int):
             })
 
     return my_schedule
+
+

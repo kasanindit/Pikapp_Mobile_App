@@ -40,6 +40,7 @@ def register_new_bsu(request: CreateUserRequest):
         # storing data to "bsu" collection
         bsu_data = {
             "uid": uid,
+            "bsu_id": uid,  # Eksplisit simpan bsu_id agar konsisten dengan seluruh codebase
             "email": generated_email,
             "bsu_name": request.bsu_name,
             "address": request.address,
@@ -117,12 +118,16 @@ def get_bsu_detail(uid: str):
     }
 
 def update_bsu_profile(uid: str, update_payload: dict):
-    user_data = get_bsu_by_uid(uid)
-
-    if not user_data:
+    # Find the document ID first since old data might not use uid as document ID
+    query = db.collection("bsu").where("uid", "==", uid).limit(1).stream()
+    user_doc_id = None
+    for doc in query:
+        user_doc_id = doc.id
+        
+    if not user_doc_id:
         raise HTTPException(status_code=404, detail="User not found in Firestore")
 
-    user_doc_ref = db.collection("bsu").document(uid) # uid is the document id
+    user_doc_ref = db.collection("bsu").document(user_doc_id)
     
     if "coordinate" in update_payload and update_payload["coordinate"]:
         update_payload["coordinate"] = [update_payload["coordinate"]["lat"], update_payload["coordinate"]["long"]]

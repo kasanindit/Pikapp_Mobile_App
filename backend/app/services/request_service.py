@@ -10,9 +10,10 @@ def fetch_all_schedule_requests():
     bsu_map = {}
     for b_doc in bsu_docs:
         b_data = b_doc.to_dict()
-        b_id = b_data.get("bsu_id") or b_data.get("uid")
-        if b_id:
-            bsu_map[b_id] = {
+        # uid adalah kunci relasi utama
+        b_uid = b_data.get("uid")
+        if b_uid:
+            bsu_map[b_uid] = {
                 "bsu_name": b_data.get("bsu_name", ""),
                 "kecamatan": b_data.get("kecamatan", ""),
                 "address": b_data.get("address", ""),
@@ -23,9 +24,9 @@ def fetch_all_schedule_requests():
     data = []
     for doc in docs:
         req_data = doc.to_dict()
-        bsu_id = req_data.get("bsu_id")
-        
-        req_data["bsu_detail"] = bsu_map.get(bsu_id, {})
+        # uid adalah kunci relasi — bsu_id hanya untuk display
+        uid_req = req_data.get("uid")
+        req_data["bsu_detail"] = bsu_map.get(uid_req, {})
         data.append(req_data)
         
     return data
@@ -41,7 +42,8 @@ def process_approve_request(request_id: str):
     jenis = req_data.get("jenis_pengajuan", "baru")
     tahun = req_data.get("tahun")
     bulan = req_data.get("bulan")
-    bsu_id = req_data.get("bsu_id")
+    # uid adalah kunci relasi untuk mencari slot di jadwal
+    uid = req_data.get("uid")
     
     if jenis in ["reschedule", "batal"]:
         jadwal_doc_id = f"{tahun}_{bulan}"
@@ -56,7 +58,8 @@ def process_approve_request(request_id: str):
             if old_date:
                 for h in hari_list:
                     if h["tanggal"] == old_date:
-                        h["slots"] = [s for s in h["slots"] if s.get("bsu_id") != bsu_id]
+                        # Hapus slot milik user ini menggunakan uid
+                        h["slots"] = [s for s in h["slots"] if s.get("uid") != uid]
                         h["total_vol"] = sum(s.get("vol_kg", 0.0) for s in h["slots"])
             
             if jenis == "reschedule":
@@ -64,13 +67,8 @@ def process_approve_request(request_id: str):
                 if new_date:
                     target_h = next((h for h in hari_list if h["tanggal"] == new_date), None)
                     
-                    bsu_data = get_bsu_by_uid(bsu_id)
-                    
-                    if not bsu_data:
-                        bsu_docs = db.collection("bsu").where("bsu_id", "==", bsu_id).limit(1).stream()
-                        for b_doc in bsu_docs:
-                            bsu_data = b_doc.to_dict()
-                            break
+                    # Ambil data BSU via uid (direct document get)
+                    bsu_data = get_bsu_by_uid(uid)
                     
                     if bsu_data:
                         lat, lon = 0.0, 0.0
@@ -80,7 +78,8 @@ def process_approve_request(request_id: str):
                             lon = float(coord[1]) if coord[1] is not None else 0.0
                             
                         slot_data = {
-                            "bsu_id": bsu_id,
+                            "uid": uid,           # relasi utama
+                            "bsu_id": bsu_data.get("bsu_id", uid),  # display only
                             "nama": bsu_data.get("bsu_name", ""),
                             "kecamatan": bsu_data.get("kecamatan", ""),
                             "vol_kg": float(req_data.get("estimasi_vol_kg", 0.0)),
@@ -119,8 +118,9 @@ def submit_schedule_request(uid: str, request: ScheduleRequestInput):
     
     if not bsu_data:
         raise HTTPException(status_code=404, detail="BSU not found")
-        
-    bsu_id = bsu_data.get("bsu_id") or uid
+    
+    # uid adalah kunci relasi utama; bsu_id hanya untuk display
+    bsu_display_id = bsu_data.get("bsu_id", uid)
     
     # Validate period
     periode_doc = db.collection("periode_pengajuan").document(f"{request.tahun}_{request.bulan}").get()
@@ -142,12 +142,12 @@ def submit_schedule_request(uid: str, request: ScheduleRequestInput):
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid date format for tanggal_lama. Use YYYY-MM-DD")
 
-    doc_id = f"{request.tahun}_{request.bulan}_{bsu_id}_{int(datetime.now().timestamp())}"
+    doc_id = f"{request.tahun}_{request.bulan}_{uid}_{int(datetime.now().timestamp())}"
     
     request_data = {
         "request_id": doc_id,
-        "uid": uid,
-        "bsu_id": bsu_id,
+        "uid": uid,                          # relasi utama
+        "bsu_id": bsu_display_id,            # display only
         "tahun": request.tahun,
         "bulan": request.bulan,
         "tanggal_request": request.tanggal_request,
