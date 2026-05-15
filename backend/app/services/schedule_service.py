@@ -204,7 +204,16 @@ def fetch_published_schedule(tahun: int, bulan: int):
     return data.get("hari_list", [])
 
 def fetch_my_schedule(uid: str, tahun: int, bulan: int):
-    # uid sudah tersedia dari token — tidak perlu lookup BSU hanya untuk dapat id
+    bsu_data = get_bsu_by_uid(uid) or {}
+    user_identifiers = {
+        value for value in [
+            uid,
+            bsu_data.get("uid"),
+            bsu_data.get("bsu_id")
+        ] if value
+    }
+
+    # Cocokkan jadwal baru (uid) dan jadwal lama (bsu_id/display id).
     doc_id = f"{tahun}_{bulan}"
     jadwal_doc = db.collection("jadwal").document(doc_id).get()
 
@@ -219,9 +228,13 @@ def fetch_my_schedule(uid: str, tahun: int, bulan: int):
     my_schedule = []
 
     for hari in hari_list:
-        # Cari slot milik user ini — bandingkan dengan uid (relasi utama)
+        # Cari slot milik user ini dari format jadwal lama maupun baru.
         user_slot = next(
-            (slot for slot in hari.get("slots", []) if slot.get("uid") == uid),
+            (
+                slot for slot in hari.get("slots", [])
+                if slot.get("uid") in user_identifiers
+                or slot.get("bsu_id") in user_identifiers
+            ),
             None
         )
 
@@ -233,5 +246,3 @@ def fetch_my_schedule(uid: str, tahun: int, bulan: int):
             })
 
     return my_schedule
-
-

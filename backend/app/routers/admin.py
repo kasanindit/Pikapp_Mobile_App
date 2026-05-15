@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from dependencies import verify_token
 from models.request_models import (
     CreateUserRequest, PeriodeSettings, 
-    GenerateScheduleRequest, SchedulePublishRequest
+    GenerateScheduleRequest, SchedulePublishRequest, HistoryStatusUpdate
 )
 from utils.firestore_helper import verify_admin_role
 from utils.response import success_response
@@ -13,6 +13,7 @@ from services.periode_service import fetch_periode_status, set_periode_status
 from services.request_service import (
     fetch_all_schedule_requests, process_approve_request, process_reject_request
 )
+from services.history_service import fetch_admin_history, write_pickup_history
 from services.schedule_service import (
     create_generated_schedule, fetch_admin_schedule, modify_schedule_draft,
     set_schedule_published, remove_schedule_slot, remove_monthly_schedule
@@ -62,6 +63,34 @@ def update_periode_status(tahun: int, bulan: int, request: PeriodeSettings, admi
 def get_schedule_requests(admin_user: dict = Depends(admin_only)):
     data = fetch_all_schedule_requests()
     return success_response(data=data)
+
+@router.get("/admin/history")
+def get_admin_history(
+    tahun: int | None = None,
+    bulan: int | None = None,
+    status: str | None = None,
+    uid: str | None = None,
+    admin_user: dict = Depends(admin_only)
+):
+    data = fetch_admin_history(tahun=tahun, bulan=bulan, status=status, uid=uid)
+    return success_response(data=data, message="Successfully fetched operational history")
+
+@router.put("/admin/history/status")
+def update_history_status(request: HistoryStatusUpdate, admin_user: dict = Depends(admin_only)):
+    if request.status not in {"completed", "canceled", "rescheduled", "failed"}:
+        raise HTTPException(status_code=400, detail="Invalid history status")
+
+    data = write_pickup_history(
+        uid=request.uid,
+        tanggal=request.tanggal,
+        status=request.status,
+        slot_data={"vol_kg": request.vol_kg},
+        tanggal_baru=request.tanggal_baru,
+        request_id=request.request_id,
+        alasan=request.alasan,
+        source="admin_override",
+    )
+    return success_response(data=data, message="History status updated")
 
 @router.put("/admin/schedule-requests/{request_id}/approve")
 def approve_request(request_id: str, admin_user: dict = Depends(admin_only)):

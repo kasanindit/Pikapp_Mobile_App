@@ -7,6 +7,7 @@ from services.bsu_service import get_bsu_detail, update_bsu_profile
 from services.periode_service import fetch_periode_status
 from services.request_service import submit_schedule_request, remove_schedule_request
 from services.schedule_service import fetch_published_schedule, fetch_my_schedule
+from services.history_service import fetch_user_history
 
 router = APIRouter(tags=["user"])
 
@@ -56,6 +57,15 @@ def get_my_schedule(tahun: int, bulan: int, decoded_token: dict = Depends(verify
     return success_response(
         data=data,
         message="Successfully fetched my schedule"
+    )
+
+@router.get("/history")
+def get_history(decoded_token: dict = Depends(verify_token)):
+    uid = decoded_token["uid"]
+    data = fetch_user_history(uid)
+    return success_response(
+        data=data,
+        message="Successfully fetched pickup history"
     )
 
 @router.delete("/schedule-request/{request_id}")

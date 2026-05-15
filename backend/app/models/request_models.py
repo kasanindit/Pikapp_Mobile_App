@@ -54,3 +54,12 @@ class ScheduleRequestInput(BaseModel):
     tanggal_lama: str | None = None
     tanggal_baru: str | None = None
     alasan: str | None = None
+
+class HistoryStatusUpdate(BaseModel):
+    uid: str
+    tanggal: str
+    status: str
+    vol_kg: float = 0.0
+    tanggal_baru: str | None = None
+    alasan: str | None = None
+    request_id: str | None = None
