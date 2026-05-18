@@ -1,0 +1,11 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: scheduleapp_backend
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Jakarta
