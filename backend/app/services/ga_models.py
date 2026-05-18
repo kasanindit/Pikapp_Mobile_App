@@ -309,7 +309,8 @@ def format_jadwal(jadwal: Chromosome) -> list[dict]:
         }
         for s in h.slots:
             hari_dict["slots"].append({
-                "bsu_id": s.bsu_id,
+                "uid": s.bsu_id,        # relasi utama — BSU.bsu_id diisi uid sejak Fase 1
+                "bsu_id": s.bsu_id,     # display only (saat ini sama dengan uid untuk data baru)
                 "nama": s.nama,
                 "kecamatan": s.kecamatan,
                 "vol_kg": s.vol_kg,

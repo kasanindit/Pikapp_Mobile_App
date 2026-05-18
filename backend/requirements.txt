@@ -1,0 +1,7 @@
+fastapi>=0.100.0
+uvicorn[standard]>=0.22.0
+PyJWT==2.12.1
+firebase-admin==7.3.0
+holidays>=0.30
+pandas>=2.0.0
+openpyxl>=3.1.0
