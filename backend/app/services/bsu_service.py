@@ -46,9 +46,12 @@ def register_new_bsu(request: CreateUserRequest):
             "address": request.address,
             "kecamatan": request.kecamatan,
             "phone_num": request.phone_num,
+            "is_active": True,
             "role": "user",
             "created_at": firestore.SERVER_TIMESTAMP
         }
+        if request.coordinate:
+            bsu_data["coordinate"] = [request.coordinate.lat, request.coordinate.long]
 
         db.collection("bsu").document(uid).set(bsu_data)
         
@@ -90,6 +93,7 @@ def fetch_all_bsu():
             "kecamatan": data.get("kecamatan"),
             "phone_num": data.get("phone_num"),
             "is_priority": data.get("is_priority"),
+            "is_active": data.get("is_active", True),
             "coordinate": coordinate
         })
 
@@ -130,7 +134,10 @@ def update_bsu_profile(uid: str, update_payload: dict):
     user_doc_ref = db.collection("bsu").document(user_doc_id)
     
     if "coordinate" in update_payload and update_payload["coordinate"]:
-        update_payload["coordinate"] = [update_payload["coordinate"]["lat"], update_payload["coordinate"]["long"]]
+        coordinate = update_payload["coordinate"]
+        if hasattr(coordinate, "dict"):
+            coordinate = coordinate.dict()
+        update_payload["coordinate"] = [coordinate["lat"], coordinate["long"]]
     elif "latitude" in update_payload and "longitude" in update_payload:
         update_payload["coordinate"] = [update_payload.pop("latitude"), update_payload.pop("longitude")]
     else:
@@ -138,6 +145,7 @@ def update_bsu_profile(uid: str, update_payload: dict):
         update_payload.pop("longitude", None)
 
     if update_payload:
+        update_payload["updated_at"] = firestore.SERVER_TIMESTAMP
         user_doc_ref.update(update_payload)
 
     return user_doc_ref.get().to_dict()

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from dependencies import verify_token
 from models.request_models import ProfileUpdate, ScheduleRequestInput
+from utils.firestore_helper import get_user_by_uid
 from utils.response import success_response
 
 from services.bsu_service import get_bsu_detail, update_bsu_profile
@@ -18,9 +19,20 @@ def get_current_bsu(decoded_token: dict = Depends(verify_token)):
     return data # Existing code returned dict directly without success wrapper
 
 @router.put("/bsu/update")
-def UpdateProfile(request: ProfileUpdate, decoded_token: dict = Depends(verify_token)):
-    uid = decoded_token["uid"]
+def UpdateProfile(
+    request: ProfileUpdate,
+    target_uid: str | None = None,
+    decoded_token: dict = Depends(verify_token)
+):
+    requester_uid = decoded_token["uid"]
+    requester = get_user_by_uid(requester_uid) or {}
+    is_admin = requester.get("role") == "admin"
+    uid = target_uid if is_admin and target_uid else requester_uid
     update_payload = request.dict(exclude_unset=True)
+
+    if not is_admin:
+        update_payload.pop("is_active", None)
+
     user_data = update_bsu_profile(uid, update_payload)
     
     return {

@@ -36,6 +36,20 @@ def _validate_change_request(uid: str, bsu_display_id: str, request: ScheduleReq
     if (old_date - today_date).days < 2:
         raise HTTPException(status_code=403, detail="Perubahan jadwal tidak bisa dilakukan karena sudah H-2 pengangkutan")
 
+    pending_requests = (
+        db.collection("schedule_requests")
+        .where("uid", "==", uid)
+        .stream()
+    )
+    for request_doc in pending_requests:
+        request_data = request_doc.to_dict()
+        if (
+            request_data.get("status") == "pending"
+            and request_data.get("jenis_pengajuan") in {"reschedule", "batal"}
+            and request_data.get("tanggal_lama") == request.tanggal_lama
+        ):
+            raise HTTPException(status_code=400, detail="Masih ada pengajuan perubahan jadwal yang menunggu persetujuan admin")
+
     old_doc = db.collection("jadwal").document(_schedule_doc_id(old_date)).get()
     if not old_doc.exists:
         raise HTTPException(status_code=404, detail="Jadwal lama tidak ditemukan")

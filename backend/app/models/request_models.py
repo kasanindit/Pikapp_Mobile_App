@@ -1,14 +1,21 @@
+from __future__ import annotations
+
 from pydantic import BaseModel
 
 # ==========================================
 # ADMIN REQUEST MODELS
 # ==========================================
 
+class CoordinateUpdate(BaseModel):
+    lat: float
+    long: float
+
 class CreateUserRequest(BaseModel):
     bsu_name: str
     address: str | None = None
     kecamatan: str | None = None
     phone_num: str | None = None
+    coordinate: CoordinateUpdate | None = None
 
 class LocationModel(BaseModel):
     latitude: float
@@ -32,10 +39,6 @@ class SchedulePublishRequest(BaseModel):
 # USER REQUEST MODELS
 # ==========================================
 
-class CoordinateUpdate(BaseModel):
-    lat: float
-    long: float
-
 class ProfileUpdate(BaseModel):
     bsu_name: str | None = None
     address: str | None = None
@@ -44,6 +47,7 @@ class ProfileUpdate(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     coordinate: CoordinateUpdate | None = None
+    is_active: bool | None = None
 
 class ScheduleRequestInput(BaseModel):
     tahun: int

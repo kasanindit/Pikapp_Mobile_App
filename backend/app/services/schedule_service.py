@@ -1,100 +1,167 @@
 from fastapi import HTTPException
 from google.cloud import firestore
-from datetime import date
+from datetime import datetime, date
+from calendar import monthrange
 import math
 from database import db
 from models.request_models import GenerateScheduleRequest
-from services.ga_models import jalankan_ga, format_jadwal, BSU
+from models.ga_models import BSU, ScheduleConfig
+from services.genetic_algorithm import generate_schedule_with_ga
 from utils.firestore_helper import get_bsu_by_uid
+
+FINAL_SKIP_STATUSES = {"canceled", "failed", "rescheduled"}
+
+def _parse_iso_date(value: str | None):
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+def _previous_month(tahun: int, bulan: int) -> tuple[int, int]:
+    if bulan == 1:
+        return tahun - 1, 12
+    return tahun, bulan - 1
+
+def _month_bounds(tahun: int, bulan: int) -> tuple[date, date]:
+    last_day = monthrange(tahun, bulan)[1]
+    return date(tahun, bulan, 1), date(tahun, bulan, last_day)
+
+def _safe_float(value, default: float = 0.0) -> float:
+    try:
+        number = float(value)
+        if math.isnan(number) or math.isinf(number):
+            return default
+        return number
+    except (TypeError, ValueError):
+        return default
+
+def _extract_coordinates(data: dict) -> tuple[float, float]:
+    coord = data.get("coordinate")
+    if coord and isinstance(coord, list) and len(coord) >= 2:
+        return _safe_float(coord[0]), _safe_float(coord[1])
+    return 0.0, 0.0
+
+def _collect_previous_month_volumes(tahun: int, bulan: int) -> dict[str, float]:
+    prev_tahun, prev_bulan = _previous_month(tahun, bulan)
+    volumes: dict[str, float] = {}
+    explicit_history_uids: set[str] = set()
+
+    for doc in db.collection("pickup_history").stream():
+        data = doc.to_dict()
+        tanggal = _parse_iso_date(data.get("tanggal"))
+        if not tanggal or tanggal.year != prev_tahun or tanggal.month != prev_bulan:
+            continue
+
+        uid = data.get("uid") or data.get("bsu_id")
+        if not uid:
+            continue
+
+        explicit_history_uids.add(uid)
+        status = data.get("status")
+        if status == "completed":
+            volumes[uid] = volumes.get(uid, 0.0) + _safe_float(data.get("vol_kg"))
+        elif status in FINAL_SKIP_STATUSES:
+            volumes[uid] = 0.0
+
+    previous_schedule = db.collection("jadwal").document(f"{prev_tahun}_{prev_bulan}").get()
+    if previous_schedule.exists:
+        schedule_data = previous_schedule.to_dict()
+        if schedule_data.get("status") == "published":
+            for hari in schedule_data.get("hari_list", []):
+                for slot in hari.get("slots", []):
+                    uid = slot.get("uid") or slot.get("bsu_id")
+                    if not uid or uid in explicit_history_uids:
+                        continue
+                    volumes[uid] = volumes.get(uid, 0.0) + _safe_float(slot.get("vol_kg"))
+
+    return volumes
+
+def _build_active_bsu_input(tahun: int, bulan: int) -> list[BSU]:
+    previous_volumes = _collect_previous_month_volumes(tahun, bulan)
+    bsu_list: list[BSU] = []
+    seen_uids: set[str] = set()
+
+    for doc in db.collection("bsu").stream():
+        data = doc.to_dict()
+        uid = data.get("uid")
+        if not uid or uid in seen_uids:
+            continue
+        if data.get("is_active", True) is False:
+            continue
+
+        seen_uids.add(uid)
+        lat, lon = _extract_coordinates(data)
+        bsu_list.append(BSU(
+            bsu_id=uid,
+            nama_bsu=data.get("bsu_name", "Unknown"),
+            kecamatan=data.get("kecamatan", "Unknown"),
+            estimated_volume_kg=previous_volumes.get(uid, 0.0),
+            latitude=lat,
+            longitude=lon,
+            is_active=True
+        ))
+
+    return bsu_list
+
+def _format_ga_schedule(result) -> list[dict]:
+    formatted = []
+    for daily in result.best_schedule:
+        day = {
+            "tanggal": daily.tanggal.isoformat(),
+            "total_vol": daily.total_volume,
+            "slots": []
+        }
+
+        for item in daily.items:
+            day["slots"].append({
+                "uid": item.bsu_id,
+                "bsu_id": item.bsu_id,
+                "nama": item.nama_bsu,
+                "kecamatan": item.kecamatan,
+                "vol_kg": item.estimated_volume_kg,
+                "lat": item.latitude,
+                "lon": item.longitude,
+                "req_terpenuhi": False
+            })
+
+        formatted.append(day)
+
+    return formatted
 
 def create_generated_schedule(request: GenerateScheduleRequest):
     tahun = request.tahun
     bulan = request.bulan
-    
-    req_docs = db.collection("schedule_requests").where("tahun", "==", tahun).where("bulan", "==", bulan).stream()
-    
-    bsu_requests = {}
-    requested_bsu_ids = set()
-    estimasi_map = {}
-    
-    for doc in req_docs:
-        data = doc.to_dict()
-        
-        if data.get("status", "approved") != "approved":
-            continue
-        if data.get("jenis_pengajuan", "baru") != "baru":
-            continue
 
-        # uid adalah kunci relasi utama (bsu_id hanya display)
-        uid = data.get("uid")
-        if not uid:
-            continue
-        requested_bsu_ids.add(uid)
-        estimasi_map[uid] = data.get("estimasi_vol_kg", 0.0)
-        
-        tgl_str = data.get("tanggal_request")
-        if tgl_str:
-            try:
-                y, m, d = map(int, tgl_str.split('-'))
-                bsu_requests[uid] = date(y, m, d)
-            except:
-                pass
-                
-    if not requested_bsu_ids:
-        raise HTTPException(status_code=400, detail="No schedule requests found for this period.")
-        
-    bsu_list = []
-    seen_ids = set()
-    bsu_docs = db.collection("bsu").stream()
-    
-    for doc in bsu_docs:
-        data = doc.to_dict()
-        # uid adalah primary identifier, bsu_id hanya untuk display
-        uid = data.get("uid")
-        if not uid:
-            continue
-        
-        if uid in requested_bsu_ids and uid not in seen_ids:
-            seen_ids.add(uid)
-            lat, lon = 0.0, 0.0
-            coord = data.get("coordinate")
-            if coord and isinstance(coord, list) and len(coord) >= 2:
-                try:
-                    lat = float(coord[0]) if coord[0] is not None else 0.0
-                    lon = float(coord[1]) if coord[1] is not None else 0.0
-                    if math.isnan(lat) or math.isinf(lat): lat = 0.0
-                    if math.isnan(lon) or math.isinf(lon): lon = 0.0
-                except (ValueError, TypeError):
-                    lat, lon = 0.0, 0.0
-            
-            vol = estimasi_map.get(uid, 0.0)
-            if math.isnan(vol) or math.isinf(vol): vol = 0.0
-                
-            bsu_list.append(BSU(
-                bsu_id=uid,   # BSU.bsu_id diisi uid agar GA menggunakan uid sebagai key internal
-                nama=data.get("bsu_name", "Unknown"),
-                kecamatan=data.get("kecamatan", "Unknown"),
-                lat=lat,
-                lon=lon,
-                estimasi_vol_kg=float(vol)
-            ))
-            
+    start_date, end_date = _month_bounds(tahun, bulan)
+    bsu_list = _build_active_bsu_input(tahun, bulan)
+
     if not bsu_list:
-        raise HTTPException(status_code=400, detail="BSU data not found for the requests.")
-        
+        raise HTTPException(status_code=400, detail="No active BSU found for schedule generation.")
+
     try:
         kapasitas_harian = request.jumlah_kendaraan * request.kapasitas_kendaraan
         max_bsu_harian = request.jumlah_kendaraan * request.kuota_kunjungan
-        jadwal_chromosome, history = jalankan_ga(
-            tahun, bulan, bsu_list, bsu_requests,
-            kapasitas=kapasitas_harian, max_bsu=max_bsu_harian
+        config = ScheduleConfig(
+            start_date=start_date,
+            end_date=end_date,
+            max_bsu_per_day=max_bsu_harian,
+            vehicle_capacity_kg=kapasitas_harian,
+            use_indonesian_holidays=False
+        )
+        ga_result = generate_schedule_with_ga(
+            bsu_list=bsu_list,
+            config=config,
+            population_size=80,
+            generations=250
         )
     except Exception as e:
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to generate schedule: {str(e)}")
-        
-    formatted_jadwal = format_jadwal(jadwal_chromosome)
+
+    formatted_jadwal = _format_ga_schedule(ga_result)
     
     doc_id = f"{tahun}_{bulan}"
     jadwal_data = {
@@ -227,6 +294,29 @@ def fetch_my_schedule(uid: str, tahun: int, bulan: int):
     hari_list = jadwal_data.get("hari_list", [])
     my_schedule = []
 
+    request_status_by_old_date = {}
+    request_docs = (
+        db.collection("schedule_requests")
+        .where("uid", "==", uid)
+        .stream()
+    )
+    for request_doc in request_docs:
+        request_data = request_doc.to_dict()
+        request_type = request_data.get("jenis_pengajuan")
+        if request_type not in {"reschedule", "batal"}:
+            continue
+
+        old_date = request_data.get("tanggal_lama")
+        if not old_date:
+            continue
+        request_status_by_old_date[old_date] = {
+            "request_id": request_data.get("request_id"),
+            "status": request_data.get("status"),
+            "jenis_pengajuan": request_type,
+            "tanggal_baru": request_data.get("tanggal_baru"),
+            "alasan": request_data.get("alasan"),
+        }
+
     for hari in hari_list:
         # Cari slot milik user ini dari format jadwal lama maupun baru.
         user_slot = next(
@@ -239,10 +329,27 @@ def fetch_my_schedule(uid: str, tahun: int, bulan: int):
         )
 
         if user_slot:
+            tanggal = hari.get("tanggal")
+            change_request = request_status_by_old_date.get(tanggal)
+            if not change_request and user_slot.get("rescheduled_from"):
+                change_request = {
+                    "request_id": user_slot.get("request_id"),
+                    "status": "approved",
+                    "jenis_pengajuan": "reschedule",
+                    "tanggal_baru": tanggal,
+                    "alasan": user_slot.get("reschedule_reason"),
+                }
+
             my_schedule.append({
-                "tanggal": hari.get("tanggal"),
+                "tanggal": tanggal,
                 "vol_kg": user_slot.get("vol_kg", 0.0),
-                "req_terpenuhi": user_slot.get("req_terpenuhi", False)
+                "req_terpenuhi": user_slot.get("req_terpenuhi", False),
+                "change_request_status": change_request.get("status") if change_request else None,
+                "change_request_id": change_request.get("request_id") if change_request else None,
+                "change_request_type": change_request.get("jenis_pengajuan") if change_request else None,
+                "tanggal_baru": change_request.get("tanggal_baru") if change_request else None,
+                "alasan_reschedule": change_request.get("alasan") if change_request else None,
+                "alasan_pengajuan": change_request.get("alasan") if change_request else None,
             })
 
     return my_schedule
