@@ -55,6 +55,9 @@ def _validate_change_request(uid: str, bsu_display_id: str, request: ScheduleReq
         raise HTTPException(status_code=404, detail="Jadwal lama tidak ditemukan")
 
     old_data = old_doc.to_dict()
+    if old_data.get("status") == "finalized":
+        raise HTTPException(status_code=403, detail="Jadwal sudah final dan tidak bisa diajukan perubahan")
+
     if old_data.get("status") != "published":
         raise HTTPException(status_code=403, detail="Jadwal lama belum dipublikasikan")
 
@@ -65,7 +68,13 @@ def _validate_change_request(uid: str, bsu_display_id: str, request: ScheduleReq
     if request.jenis_pengajuan == "reschedule":
         new_date = _parse_schedule_date(request.tanggal_baru, "tanggal_baru")
         target_doc = db.collection("jadwal").document(_schedule_doc_id(new_date)).get()
-        if not target_doc.exists or target_doc.to_dict().get("status") != "published":
+        if not target_doc.exists:
+            raise HTTPException(status_code=403, detail="Jadwal tujuan belum dipublikasikan")
+
+        target_status = target_doc.to_dict().get("status")
+        if target_status == "finalized":
+            raise HTTPException(status_code=403, detail="Jadwal tujuan sudah final")
+        if target_status != "published":
             raise HTTPException(status_code=403, detail="Jadwal tujuan belum dipublikasikan")
 
 def fetch_all_schedule_requests():
@@ -120,6 +129,9 @@ def process_approve_request(request_id: str):
             raise HTTPException(status_code=404, detail="Jadwal lama tidak ditemukan")
 
         old_data = old_doc.to_dict()
+        if old_data.get("status") == "finalized":
+            raise HTTPException(status_code=403, detail="Jadwal sudah final dan tidak bisa diproses sebagai pengajuan perubahan")
+
         if old_data.get("status") != "published":
             raise HTTPException(status_code=403, detail="Jadwal lama belum dipublikasikan")
 
@@ -155,6 +167,9 @@ def process_approve_request(request_id: str):
                 raise HTTPException(status_code=404, detail="Jadwal tujuan tidak ditemukan")
 
             target_data = old_data if new_doc_id == old_doc_id else target_doc.to_dict()
+            if target_data.get("status") == "finalized":
+                raise HTTPException(status_code=403, detail="Jadwal tujuan sudah final")
+
             if target_data.get("status") != "published":
                 raise HTTPException(status_code=403, detail="Jadwal tujuan belum dipublikasikan")
 

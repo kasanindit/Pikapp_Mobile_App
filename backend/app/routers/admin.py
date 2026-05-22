@@ -16,7 +16,7 @@ from services.request_service import (
 from services.history_service import fetch_admin_history, write_pickup_history
 from services.schedule_service import (
     create_generated_schedule, fetch_admin_schedule, modify_schedule_draft,
-    set_schedule_published, remove_schedule_slot, remove_monthly_schedule
+    set_schedule_published, set_schedule_finalized, remove_schedule_slot, remove_monthly_schedule
 )
 
 router = APIRouter(tags=["admin"])
@@ -124,6 +124,11 @@ def update_schedule_draft(tahun: int, bulan: int, request: SchedulePublishReques
 def publish_schedule(tahun: int, bulan: int, request: SchedulePublishRequest, admin_user: dict = Depends(admin_only)):
     set_schedule_published(tahun, bulan, request.hari_list)
     return success_response(message="Schedule published successfully")
+
+@router.put("/schedule/{tahun}/{bulan}/finalize")
+def finalize_schedule(tahun: int, bulan: int, admin_user: dict = Depends(admin_only)):
+    data = set_schedule_finalized(tahun, bulan)
+    return success_response(data=data, message="Schedule finalized successfully")
 
 @router.delete("/schedule/{tahun}/{bulan}/slot")
 def delete_schedule_slot(tahun: int, bulan: int, tanggal: str, uid: str, admin_user: dict = Depends(admin_only)):

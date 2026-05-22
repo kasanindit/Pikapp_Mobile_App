@@ -10,6 +10,7 @@ from services.genetic_algorithm import generate_schedule_with_ga
 from utils.firestore_helper import get_bsu_by_uid
 
 FINAL_SKIP_STATUSES = {"canceled", "failed", "rescheduled"}
+VISIBLE_SCHEDULE_STATUSES = {"published", "finalized"}
 
 def _parse_iso_date(value: str | None):
     if not value:
@@ -68,7 +69,7 @@ def _collect_previous_month_volumes(tahun: int, bulan: int) -> dict[str, float]:
     previous_schedule = db.collection("jadwal").document(f"{prev_tahun}_{prev_bulan}").get()
     if previous_schedule.exists:
         schedule_data = previous_schedule.to_dict()
-        if schedule_data.get("status") == "published":
+        if schedule_data.get("status") in VISIBLE_SCHEDULE_STATUSES:
             for hari in schedule_data.get("hari_list", []):
                 for slot in hari.get("slots", []):
                     uid = slot.get("uid") or slot.get("bsu_id")
@@ -130,6 +131,30 @@ def _format_ga_schedule(result) -> list[dict]:
 
     return formatted
 
+def _format_ga_debug(result, bsu_list: list[BSU]) -> dict:
+    detail = result.fitness_detail
+    return {
+        "active_bsu_count": len(bsu_list),
+        "included_bsu": [
+            {
+                "uid": bsu.bsu_id,
+                "nama": bsu.nama_bsu,
+                "kecamatan": bsu.kecamatan,
+                "vol_kg": bsu.estimated_volume_kg
+            }
+            for bsu in bsu_list
+        ],
+        "best_fitness": result.best_fitness,
+        "generation_found": result.generation_found,
+        "mixed_district_days": detail.mixed_district_days,
+        "used_days": detail.used_days,
+        "scheduled_bsu_count": detail.scheduled_bsu_count,
+        "unscheduled_bsu_count": detail.unscheduled_bsu_count,
+        "total_distance": detail.total_distance,
+        "district_penalty": detail.district_penalty,
+        "unscheduled_penalty": detail.unscheduled_penalty,
+    }
+
 def create_generated_schedule(request: GenerateScheduleRequest):
     tahun = request.tahun
     bulan = request.bulan
@@ -162,6 +187,7 @@ def create_generated_schedule(request: GenerateScheduleRequest):
         raise HTTPException(status_code=500, detail=f"Failed to generate schedule: {str(e)}")
 
     formatted_jadwal = _format_ga_schedule(ga_result)
+    ga_debug = _format_ga_debug(ga_result, bsu_list)
     
     doc_id = f"{tahun}_{bulan}"
     jadwal_data = {
@@ -169,6 +195,7 @@ def create_generated_schedule(request: GenerateScheduleRequest):
         "bulan": bulan,
         "status": "draft",
         "hari_list": formatted_jadwal,
+        "ga_debug": ga_debug,
         "created_at": firestore.SERVER_TIMESTAMP,
         "updated_at": firestore.SERVER_TIMESTAMP
     }
@@ -179,7 +206,8 @@ def create_generated_schedule(request: GenerateScheduleRequest):
         "tahun": tahun,
         "bulan": bulan,
         "status": "draft",
-        "hari_list": formatted_jadwal
+        "hari_list": formatted_jadwal,
+        "ga_debug": ga_debug
     }
 
 def fetch_admin_schedule(tahun: int, bulan: int):
@@ -206,15 +234,40 @@ def modify_schedule_draft(tahun: int, bulan: int, hari_list: list):
 def set_schedule_published(tahun: int, bulan: int, hari_list: list):
     doc_id = f"{tahun}_{bulan}"
     doc_ref = db.collection("jadwal").document(doc_id)
-    
-    if not doc_ref.get().exists:
+    doc = doc_ref.get()
+
+    if not doc.exists:
         raise HTTPException(status_code=404, detail="Schedule draft not found")
-        
+
+    data = doc.to_dict()
+    if data.get("status") == "finalized":
+        raise HTTPException(status_code=400, detail="Finalized schedule cannot be reopened for user review")
+
     doc_ref.update({
         "status": "published",
         "hari_list": hari_list,
         "updated_at": firestore.SERVER_TIMESTAMP
     })
+
+def set_schedule_finalized(tahun: int, bulan: int):
+    doc_id = f"{tahun}_{bulan}"
+    doc_ref = db.collection("jadwal").document(doc_id)
+    doc = doc_ref.get()
+
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+
+    data = doc.to_dict()
+    if data.get("status") != "published":
+        raise HTTPException(status_code=400, detail="Only a published schedule can be finalized")
+
+    doc_ref.update({
+        "status": "finalized",
+        "updated_at": firestore.SERVER_TIMESTAMP
+    })
+
+    updated_doc = doc_ref.get()
+    return updated_doc.to_dict()
 
 def remove_schedule_slot(tahun: int, bulan: int, tanggal: str, uid: str):
     doc_id = f"{tahun}_{bulan}"
@@ -265,7 +318,7 @@ def fetch_published_schedule(tahun: int, bulan: int):
         
     data = doc.to_dict()
     
-    if data.get("status") != "published":
+    if data.get("status") not in VISIBLE_SCHEDULE_STATUSES:
         raise HTTPException(status_code=404, detail="Schedule is not published yet")
         
     return data.get("hari_list", [])
@@ -288,7 +341,8 @@ def fetch_my_schedule(uid: str, tahun: int, bulan: int):
         raise HTTPException(status_code=404, detail="Schedule not found")
 
     jadwal_data = jadwal_doc.to_dict()
-    if jadwal_data.get("status") != "published":
+    schedule_status = jadwal_data.get("status")
+    if schedule_status not in VISIBLE_SCHEDULE_STATUSES:
         raise HTTPException(status_code=404, detail="Schedule not published yet")
 
     hari_list = jadwal_data.get("hari_list", [])
@@ -344,6 +398,8 @@ def fetch_my_schedule(uid: str, tahun: int, bulan: int):
                 "tanggal": tanggal,
                 "vol_kg": user_slot.get("vol_kg", 0.0),
                 "req_terpenuhi": user_slot.get("req_terpenuhi", False),
+                "schedule_status": schedule_status,
+                "can_request_change": schedule_status == "published",
                 "change_request_status": change_request.get("status") if change_request else None,
                 "change_request_id": change_request.get("request_id") if change_request else None,
                 "change_request_type": change_request.get("jenis_pengajuan") if change_request else None,

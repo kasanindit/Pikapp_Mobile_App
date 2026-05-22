@@ -4,6 +4,7 @@ from database import db
 from utils.firestore_helper import get_bsu_by_uid
 
 FINAL_EVENT_STATUSES = {"completed", "canceled", "rescheduled", "failed"}
+VISIBLE_SCHEDULE_STATUSES = {"published", "finalized"}
 
 def _parse_date(value: str | None):
     if not value:
@@ -134,7 +135,7 @@ def fetch_history(uid: str | None = None, tahun: int | None = None, bulan: int |
     schedule_docs = db.collection("jadwal").stream()
     for doc in schedule_docs:
         schedule_data = doc.to_dict()
-        if schedule_data.get("status") != "published":
+        if schedule_data.get("status") not in VISIBLE_SCHEDULE_STATUSES:
             continue
 
         for hari in schedule_data.get("hari_list", []):
