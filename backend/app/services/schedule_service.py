@@ -133,6 +133,17 @@ def _format_ga_schedule(result) -> list[dict]:
 
 def _format_ga_debug(result, bsu_list: list[BSU]) -> dict:
     detail = result.fitness_detail
+    unscheduled_bsu_count = getattr(
+        detail,
+        "unscheduled_bsu_count",
+        getattr(detail, "missing_bsu_count", 0)
+    )
+    unscheduled_penalty = getattr(
+        detail,
+        "unscheduled_penalty",
+        getattr(detail, "constraint_penalty", 0.0)
+    )
+
     return {
         "active_bsu_count": len(bsu_list),
         "included_bsu": [
@@ -149,10 +160,15 @@ def _format_ga_debug(result, bsu_list: list[BSU]) -> dict:
         "mixed_district_days": detail.mixed_district_days,
         "used_days": detail.used_days,
         "scheduled_bsu_count": detail.scheduled_bsu_count,
-        "unscheduled_bsu_count": detail.unscheduled_bsu_count,
+        "unscheduled_bsu_count": unscheduled_bsu_count,
         "total_distance": detail.total_distance,
         "district_penalty": detail.district_penalty,
-        "unscheduled_penalty": detail.unscheduled_penalty,
+        "unscheduled_penalty": unscheduled_penalty,
+        "volume_penalty": getattr(detail, "volume_penalty", None),
+        "constraint_penalty": getattr(detail, "constraint_penalty", None),
+        "missing_bsu_count": getattr(detail, "missing_bsu_count", None),
+        "duplicate_bsu_count": getattr(detail, "duplicate_bsu_count", None),
+        "empty_days_count": getattr(detail, "empty_days_count", None),
     }
 
 def create_generated_schedule(request: GenerateScheduleRequest):
