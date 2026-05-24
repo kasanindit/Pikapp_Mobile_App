@@ -5,8 +5,8 @@ from calendar import monthrange
 import math
 from database import db
 from models.request_models import GenerateScheduleRequest
-from models.ga_models import BSU, ScheduleConfig
-from services.genetic_algorithm import generate_schedule_with_ga
+from models.ga_models_ver4 import BSU, ScheduleConfig
+from services.genetic_algorithm_ver4 import generate_schedule_with_ga_v4
 from utils.firestore_helper import get_bsu_by_uid
 
 FINAL_SKIP_STATUSES = {"canceled", "failed", "rescheduled"}
@@ -44,43 +44,86 @@ def _extract_coordinates(data: dict) -> tuple[float, float]:
         return _safe_float(coord[0]), _safe_float(coord[1])
     return 0.0, 0.0
 
-def _collect_previous_month_volumes(tahun: int, bulan: int) -> dict[str, float]:
-    prev_tahun, prev_bulan = _previous_month(tahun, bulan)
-    volumes: dict[str, float] = {}
-    explicit_history_uids: set[str] = set()
+def _remember_latest_volume(
+    candidates: dict[str, tuple[date, int, float]],
+    uid: str | None,
+    tanggal: date | None,
+    volume: float,
+    source_priority: int,
+) -> None:
+    if not uid or not tanggal:
+        return
 
+    current = candidates.get(uid)
+    candidate = (tanggal, source_priority, volume)
+    if current is None or (candidate[0], candidate[1]) > (current[0], current[1]):
+        candidates[uid] = candidate
+
+def _collect_latest_historical_volumes(
+    tahun: int,
+    bulan: int,
+    excluded_history_sources: set[str] | None = None,
+) -> dict[str, float]:
+    start_date, _ = _month_bounds(tahun, bulan)
+    candidates: dict[str, tuple[date, int, float]] = {}
+    excluded_history_sources = excluded_history_sources or set()
+
+    for schedule_doc in db.collection("jadwal").stream():
+        schedule_data = schedule_doc.to_dict() or {}
+        if schedule_data.get("status") not in VISIBLE_SCHEDULE_STATUSES:
+            continue
+
+        for hari in schedule_data.get("hari_list", []):
+            tanggal = _parse_iso_date(hari.get("tanggal"))
+            if not tanggal or tanggal >= start_date:
+                continue
+
+            for slot in hari.get("slots", []):
+                _remember_latest_volume(
+                    candidates=candidates,
+                    uid=slot.get("uid") or slot.get("bsu_id"),
+                    tanggal=tanggal,
+                    volume=_safe_float(slot.get("vol_kg")),
+                    source_priority=1,
+                )
+
+    # menimpa slot jadwal pada tanggal yang sama
     for doc in db.collection("pickup_history").stream():
-        data = doc.to_dict()
+        data = doc.to_dict() or {}
+        if data.get("source") in excluded_history_sources:
+            continue
+
         tanggal = _parse_iso_date(data.get("tanggal"))
-        if not tanggal or tanggal.year != prev_tahun or tanggal.month != prev_bulan:
+        if not tanggal or tanggal >= start_date:
             continue
 
         uid = data.get("uid") or data.get("bsu_id")
         if not uid:
             continue
 
-        explicit_history_uids.add(uid)
         status = data.get("status")
         if status == "completed":
-            volumes[uid] = volumes.get(uid, 0.0) + _safe_float(data.get("vol_kg"))
+            volume = _safe_float(data.get("vol_kg"))
         elif status in FINAL_SKIP_STATUSES:
-            volumes[uid] = 0.0
+            volume = 0.0
+        else:
+            continue
 
-    previous_schedule = db.collection("jadwal").document(f"{prev_tahun}_{prev_bulan}").get()
-    if previous_schedule.exists:
-        schedule_data = previous_schedule.to_dict()
-        if schedule_data.get("status") in VISIBLE_SCHEDULE_STATUSES:
-            for hari in schedule_data.get("hari_list", []):
-                for slot in hari.get("slots", []):
-                    uid = slot.get("uid") or slot.get("bsu_id")
-                    if not uid or uid in explicit_history_uids:
-                        continue
-                    volumes[uid] = volumes.get(uid, 0.0) + _safe_float(slot.get("vol_kg"))
+        _remember_latest_volume(
+            candidates=candidates,
+            uid=uid,
+            tanggal=tanggal,
+            volume=volume,
+            source_priority=2,
+        )
 
-    return volumes
+    return {
+        uid: volume
+        for uid, (_, _, volume) in candidates.items()
+    }
 
 def _build_active_bsu_input(tahun: int, bulan: int) -> list[BSU]:
-    previous_volumes = _collect_previous_month_volumes(tahun, bulan)
+    previous_volumes = _collect_latest_historical_volumes(tahun, bulan)
     bsu_list: list[BSU] = []
     seen_uids: set[str] = set()
 
@@ -133,6 +176,20 @@ def _format_ga_schedule(result) -> list[dict]:
 
 def _format_ga_debug(result, bsu_list: list[BSU]) -> dict:
     detail = result.fitness_detail
+    fitness_history = getattr(result, "fitness_history", []) or []
+    initial_fitness = fitness_history[0] if fitness_history else result.best_fitness
+    final_fitness = result.best_fitness
+    fitness_improvement = final_fitness - initial_fitness
+    kecamatan_penalty = getattr(
+        detail,
+        "kecamatan_penalty",
+        getattr(detail, "district_penalty", 0.0)
+    )
+    total_penalty = getattr(
+        detail,
+        "total_penalty",
+        getattr(detail, "constraint_penalty", 0.0)
+    )
     unscheduled_bsu_count = getattr(
         detail,
         "unscheduled_bsu_count",
@@ -143,6 +200,21 @@ def _format_ga_debug(result, bsu_list: list[BSU]) -> dict:
         "unscheduled_penalty",
         getattr(detail, "constraint_penalty", 0.0)
     )
+    fitness_history_sample = [
+        {
+            "generation": snapshot.generation,
+            "best_fitness": snapshot.best_fitness,
+            "total_penalty": snapshot.total_penalty,
+            "capacity_penalty": snapshot.capacity_penalty,
+            "kecamatan_penalty": snapshot.kecamatan_penalty,
+            "max_bsu_penalty": snapshot.max_bsu_penalty,
+            "empty_days_count": snapshot.empty_days_count,
+            "overloaded_days_count": snapshot.overloaded_days_count,
+            "over_quota_days_count": snapshot.over_quota_days_count,
+            "mixed_district_days": snapshot.mixed_district_days,
+        }
+        for snapshot in getattr(result, "generation_snapshots", [])
+    ]
 
     return {
         "active_bsu_count": len(bsu_list),
@@ -156,19 +228,58 @@ def _format_ga_debug(result, bsu_list: list[BSU]) -> dict:
             for bsu in bsu_list
         ],
         "best_fitness": result.best_fitness,
-        "generation_found": result.generation_found,
+        "generation_found": result.generation_found + 1,
+        "generation_count": len(fitness_history),
+        "initial_fitness": initial_fitness,
+        "final_fitness": final_fitness,
+        "fitness_improvement": fitness_improvement,
+        "fitness_history_sample": fitness_history_sample,
+        "ga_summary": {
+            "best_fitness": result.best_fitness,
+            "generation_found": result.generation_found + 1,
+            "generation_count": len(fitness_history),
+            "scheduled_bsu_count": detail.scheduled_bsu_count,
+            "unscheduled_bsu_count": unscheduled_bsu_count,
+            "total_penalty": total_penalty,
+            "capacity_penalty": getattr(detail, "capacity_penalty", None),
+            "kecamatan_penalty": kecamatan_penalty,
+            "max_bsu_penalty": getattr(detail, "max_bsu_penalty", None),
+            "empty_days_count": getattr(detail, "empty_days_count", None),
+            "overloaded_days_count": getattr(detail, "overloaded_days_count", None),
+            "over_quota_days_count": getattr(detail, "over_quota_days_count", None),
+            "mixed_district_days": detail.mixed_district_days,
+        },
+        "warnings": [
+            {
+                "code": warning.code,
+                "message": warning.message,
+                "details": warning.details
+            }
+            for warning in getattr(result, "warnings", [])
+        ],
+        "working_day_count": getattr(result, "working_day_count", None),
+        "total_slot": getattr(result, "total_slot", None),
+        "max_bsu_per_day": getattr(result, "max_bsu_per_day", None),
+        "vehicle_capacity_kg": getattr(result, "vehicle_capacity_kg", None),
         "mixed_district_days": detail.mixed_district_days,
         "used_days": detail.used_days,
         "scheduled_bsu_count": detail.scheduled_bsu_count,
         "unscheduled_bsu_count": unscheduled_bsu_count,
         "total_distance": detail.total_distance,
-        "district_penalty": detail.district_penalty,
+        "district_penalty": kecamatan_penalty,
         "unscheduled_penalty": unscheduled_penalty,
         "volume_penalty": getattr(detail, "volume_penalty", None),
-        "constraint_penalty": getattr(detail, "constraint_penalty", None),
+        "constraint_penalty": getattr(detail, "constraint_penalty", total_penalty),
+        "coverage_penalty": getattr(detail, "coverage_penalty", None),
+        "capacity_penalty": getattr(detail, "capacity_penalty", None),
+        "max_bsu_penalty": getattr(detail, "max_bsu_penalty", None),
+        "kecamatan_penalty": kecamatan_penalty,
+        "total_penalty": total_penalty,
         "missing_bsu_count": getattr(detail, "missing_bsu_count", None),
         "duplicate_bsu_count": getattr(detail, "duplicate_bsu_count", None),
         "empty_days_count": getattr(detail, "empty_days_count", None),
+        "overloaded_days_count": getattr(detail, "overloaded_days_count", None),
+        "over_quota_days_count": getattr(detail, "over_quota_days_count", None),
     }
 
 def create_generated_schedule(request: GenerateScheduleRequest):
@@ -182,20 +293,20 @@ def create_generated_schedule(request: GenerateScheduleRequest):
         raise HTTPException(status_code=400, detail="No active BSU found for schedule generation.")
 
     try:
-        kapasitas_harian = request.jumlah_kendaraan * request.kapasitas_kendaraan
-        max_bsu_harian = request.jumlah_kendaraan * request.kuota_kunjungan
+        kapasitas_harian = max(1.0, request.kapasitas_kendaraan)
+        max_bsu_harian = max(1, request.kuota_kunjungan)
         config = ScheduleConfig(
             start_date=start_date,
             end_date=end_date,
             max_bsu_per_day=max_bsu_harian,
             vehicle_capacity_kg=kapasitas_harian,
-            use_indonesian_holidays=False
+            population_size=150,
+            generations=200,
+            use_indonesian_holidays=True
         )
-        ga_result = generate_schedule_with_ga(
+        ga_result = generate_schedule_with_ga_v4(
             bsu_list=bsu_list,
-            config=config,
-            population_size=80,
-            generations=250
+            config=config
         )
     except Exception as e:
         import traceback
