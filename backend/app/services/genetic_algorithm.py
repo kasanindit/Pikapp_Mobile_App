@@ -30,10 +30,10 @@ def calculate_fitness(
     working_days: Optional[List[date]] = None
 ) -> float:
     return calculate_fitness_detail(
-        chromosome,
-        config,
-        max_distance,
-        working_days
+        chromosome=chromosome,
+        config=config,
+        max_distance=max_distance,
+        working_days=working_days
     ).fitness
 
 # tournament selection
@@ -50,7 +50,11 @@ def tournament_selection(
         tournament_size = len(population)
 
     candidate_indexes = random.sample(range(len(population)), tournament_size)
-    best_index = min(candidate_indexes, key=lambda index: fitness_scores[index])
+
+    best_index = min(
+        candidate_indexes,
+        key=lambda index: fitness_scores[index]
+    )
 
     return population[best_index][:]
 
@@ -68,11 +72,12 @@ def order_crossover(
 
     child: List[Optional[BSU]] = [None] * size
 
-    # Ambil sebagian gen dari parent1
     child[start:end + 1] = parent1[start:end + 1]
 
-    # Isi sisa posisi dari parent2 sesuai urutan
-    parent2_remaining = [bsu for bsu in parent2 if bsu not in child]
+    parent2_remaining = [
+        bsu for bsu in parent2
+        if bsu not in child
+    ]
 
     index = 0
 
@@ -81,7 +86,10 @@ def order_crossover(
             child[i] = parent2_remaining[index]
             index += 1
 
-    return [bsu for bsu in child if bsu is not None]
+    return [
+        bsu for bsu in child
+        if bsu is not None
+    ]
 
 # mutasi
 def swap_mutation(
@@ -105,7 +113,7 @@ def generate_schedule_with_ga(
     population_size: int = 50,
     generations: int = 100,
     crossover_rate: float = 0.8,
-    mutation_rate: float = 0.1,
+    mutation_rate: float = 0.05,
     elitism_count: int = 2,
     random_seed: Optional[int] = None,
     verbose: bool = False,
@@ -114,7 +122,10 @@ def generate_schedule_with_ga(
     if random_seed is not None:
         random.seed(random_seed)
 
-    active_bsu = [bsu for bsu in bsu_list if bsu.is_active]
+    active_bsu = [
+        bsu for bsu in bsu_list
+        if bsu.is_active
+    ]
 
     if not active_bsu:
         raise ValueError("Tidak ada BSU aktif yang dapat dijadwalkan.")
@@ -122,7 +133,7 @@ def generate_schedule_with_ga(
     total_weight = (
         config.weight_distance
         + config.weight_district
-        + config.weight_unscheduled
+        + config.weight_volume
     )
 
     if round(total_weight, 5) != 1.0:
@@ -135,13 +146,22 @@ def generate_schedule_with_ga(
         additional_holidays=config.additional_holidays
     )
 
-    if not working_days:
-        raise ValueError("Tidak ada hari kerja pada rentang tanggal yang dipilih.")
+    # validate_problem_feasibility(
+    #     active_bsu=active_bsu,
+    #     working_days=working_days,
+    #     config=config
+    # )
 
-    population = create_initial_population(active_bsu, population_size)
+    population = create_initial_population(
+        active_bsu,
+        population_size
+    )
 
-    # Max distance diambil dari populasi awal agar berbasis data.
-    max_distance = estimate_max_distance(population, config, working_days)
+    max_distance = estimate_max_distance(
+        population,
+        config,
+        working_days
+    )
 
     best_chromosome: Optional[List[BSU]] = None
     best_fitness = float("inf")
@@ -150,7 +170,12 @@ def generate_schedule_with_ga(
 
     for generation in range(generations):
         fitness_scores = [
-            calculate_fitness(chromosome, config, max_distance, working_days)
+            calculate_fitness(
+                chromosome,
+                config,
+                max_distance,
+                working_days
+            )
             for chromosome in population
         ]
 
@@ -159,15 +184,23 @@ def generate_schedule_with_ga(
             key=lambda index: fitness_scores[index]
         )
 
-        population = [population[index] for index in sorted_indexes]
-        fitness_scores = [fitness_scores[index] for index in sorted_indexes]
+        population = [
+            population[index]
+            for index in sorted_indexes
+        ]
+
+        fitness_scores = [
+            fitness_scores[index]
+            for index in sorted_indexes
+        ]
 
         current_best = population[0]
+
         current_best_detail = calculate_fitness_detail(
-            current_best,
-            config,
-            max_distance,
-            working_days
+            chromosome=current_best,
+            config=config,
+            max_distance=max_distance,
+            working_days=working_days
         )
 
         current_best_fitness = current_best_detail.fitness
@@ -190,7 +223,10 @@ def generate_schedule_with_ga(
             )
 
         # Elitism
-        new_population = population[:elitism_count]
+        new_population = [
+            chromosome[:]
+            for chromosome in population[:elitism_count]
+        ]
 
         while len(new_population) < population_size:
             parent1 = tournament_selection(
@@ -217,12 +253,17 @@ def generate_schedule_with_ga(
     if best_chromosome is None:
         raise RuntimeError("GA gagal menghasilkan solusi.")
 
-    best_schedule = decode_chromosome(best_chromosome, config, working_days)
+    best_schedule = decode_chromosome(
+        chromosome=best_chromosome,
+        config=config,
+        working_days=working_days
+    )
+
     best_detail = calculate_fitness_detail(
-        best_chromosome,
-        config,
-        max_distance,
-        working_days
+        chromosome=best_chromosome,
+        config=config,
+        max_distance=max_distance,
+        working_days=working_days
     )
 
     return GAResult(

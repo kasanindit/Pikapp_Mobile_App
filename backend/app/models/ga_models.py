@@ -21,15 +21,14 @@ class ScheduleConfig:
     end_date: date
 
     # Hard constraint
-    max_bsu_per_day: int = 3
+    max_bsu_per_day: int = 3 #jadiin dinamis sesuai dari android
     vehicle_capacity_kg: float = 1000.0
 
     # Bobot fitness
-    weight_distance: float = 0.40
-    weight_district: float = 0.30
-    weight_unscheduled: float = 0.30
+    weight_distance: float = 0.35
+    weight_district: float = 0.40
+    weight_volume: float = 0.25
 
-    # Kalender Indonesia
     use_indonesian_holidays: bool = True
     additional_holidays: Optional[List[date]] = None
 
@@ -47,19 +46,26 @@ class DailySchedule:
 class FitnessDetail:
     distance_score: float
     district_penalty: float
-    unscheduled_penalty: float
+    volume_penalty: float
+    constraint_penalty: float
     fitness: float
+
     total_distance: float
     mixed_district_days: int
     used_days: int
+
     scheduled_bsu_count: int
-    unscheduled_bsu_count: int
+    missing_bsu_count: int
+    duplicate_bsu_count: int
+    empty_days_count: int
 
 
 @dataclass
 class GAResult:
     best_chromosome: List[BSU]
+    # Hasil decode dari best_chromosome
     best_schedule: List[DailySchedule]
+
     best_fitness: float
     fitness_detail: FitnessDetail
     generation_found: int
