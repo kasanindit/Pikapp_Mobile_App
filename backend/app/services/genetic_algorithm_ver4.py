@@ -53,12 +53,12 @@ def create_initial_population(active_bsu: List[BSU], config: ScheduleConfig) -> 
 #             # )
 
 #             if can_place_by_count :
-#                 same_kecamatan_score = 0 if bsu.kecamatan in {item.kecamatan for item in current_items} else 1
+#                 # same_kecamatan_score = 0 if bsu.kecamatan in {item.kecamatan for item in current_items} else 1
 #                 volume_after_insert = current_volume + bsu.estimated_volume_kg
 #                 count_after_insert = len(current_items) + 1
 #                 candidate_days.append(
 #                     (
-#                         same_kecamatan_score,
+#                         # same_kecamatan_score,
 #                         count_after_insert,
 #                         volume_after_insert,
 #                         day,
@@ -66,10 +66,10 @@ def create_initial_population(active_bsu: List[BSU], config: ScheduleConfig) -> 
 #                 )
 
 #         if candidate_days:
-#             candidate_days.sort(key=lambda item: (item[0], item[1], item[2]))
-#             assignment[candidate_days[0][3]].append(bsu)
-#             # candidate_days.sort(key=lambda item: (item[0], item[1]))
-#             # assignment[candidate_days[0][2]].append(bsu)
+#             # candidate_days.sort(key=lambda item: (item[0], item[1], item[2]))
+#             # assignment[candidate_days[0][3]].append(bsu)
+#             candidate_days.sort(key=lambda item: (item[0], item[1]))
+#             assignment[candidate_days[0][2]].append(bsu)
 #         else:
 #             # Tetap masukkan BSU agar tidak hilang dari draft; pelanggaran dihitung oleh fitness.
 #             lightest_day = min(
