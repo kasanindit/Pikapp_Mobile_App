@@ -6,11 +6,22 @@ import math
 from database import db
 from models.request_models import GenerateScheduleRequest
 from models.ga_models_ver4 import BSU, ScheduleConfig
-from services.genetic_algorithm_ver4 import generate_schedule_with_ga_v4
+# from services.genetic_algorithm_ver4 import generate_schedule_with_ga_v4
+from services.ga_scheduler_ver5 import generate_schedule_with_ga_v5
+# from models.ga_models import BSU, ScheduleConfig
+# from services.genetic_algorithm import generate_schedule_with_ga
 from utils.firestore_helper import get_bsu_by_uid
 
 FINAL_SKIP_STATUSES = {"canceled", "failed", "rescheduled"}
 VISIBLE_SCHEDULE_STATUSES = {"published", "finalized"}
+
+# Pengaturan sementara untuk mencoba backend/app/services/genetic_algorithm.py
+# GA_POPULATION_SIZE = 150
+# GA_GENERATIONS = 200
+# GA_CROSSOVER_RATE = 0.8
+# GA_MUTATION_RATE = 0.05
+# GA_ELITISM_COUNT = 2
+# GA_RANDOM_SEED = None
 
 def _parse_iso_date(value: str | None):
     if not value:
@@ -304,10 +315,36 @@ def create_generated_schedule(request: GenerateScheduleRequest):
             generations=200,
             use_indonesian_holidays=True
         )
-        ga_result = generate_schedule_with_ga_v4(
+        # ga_result = generate_schedule_with_ga_v4(
+        #     bsu_list=bsu_list,
+        #     config=config
+        # )
+        
+        ga_result = generate_schedule_with_ga_v5(
             bsu_list=bsu_list,
             config=config
         )
+        
+        # config = ScheduleConfig(
+        #     start_date=start_date,
+        #     end_date=end_date,
+        #     max_bsu_per_day=max_bsu_harian,
+        #     vehicle_capacity_kg=kapasitas_harian,
+        #     use_indonesian_holidays=True
+        # )
+
+        # ga_result = generate_schedule_with_ga(
+        #     bsu_list=bsu_list,
+        #     config=config,
+        #     population_size=GA_POPULATION_SIZE,
+        #     generations=GA_GENERATIONS,
+        #     crossover_rate=GA_CROSSOVER_RATE,
+        #     mutation_rate=GA_MUTATION_RATE,
+        #     elitism_count=GA_ELITISM_COUNT,
+        #     random_seed=GA_RANDOM_SEED,
+        # )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         import traceback
         traceback.print_exc()

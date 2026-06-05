@@ -24,48 +24,25 @@ class ScheduleConfig:
     max_bsu_per_day: int = 3
     vehicle_capacity_kg: float = 1000.0
 
-    # population_size: int = 150
-    population_size: int = 100
+    # parameter GA
+    population_size: int = 80
     generations: int = 200
-    # crossover_rate: float = 0.90
-    # mutation_rate: float = 0.05
-    crossover_rate: float = 0.85
-    mutation_rate: float = 0.2
-    elitism_count: int = 4
-    # tournament_size: int = 4
-    tournament_size: int = 5
-    random_seed: Optional[int] = None
-
-    # coverage_weight: float = 40.0
-    coverage_weight: float = 5.0 # sudah diatasi di tahapan decoding
-    kecamatan_weight: float = 45.0
-    max_bsu_weight: float = 35.0
-    capacity_weight: float = 15.0
+    crossover_rate: float = 0.80
+    mutation_rate: float = 0.15
+    elitism_count: int = 2
+    tournament_size: int = 4
     
-    # coverage_weight: float = 40.0
-    # kecamatan_weight: float = 25.0
-    # max_bsu_weight: float = 20.0
-    # capacity_weight: float = 10.0
+    # bobot constraint
+    coverage_weight: float = 35.0
+    kecamatan_weight: float = 25.0
+    max_bsu_weight: float = 30.0
+    capacity_weight: float = 5.0
+    volume_balance_weight: float = 5.0
 
+    random_seed: Optional[int] = None
     use_indonesian_holidays: bool = True
     additional_holidays: Optional[List[date]] = None
     
-    """
-    === Final Best Config ===
-coverage_weight   : 5
-capacity_weight   : 15
-max_bsu_weight    : 35
-kecamatan_weight  : 45
-population_size   : 100
-generations       : 200
-crossover_rate    : 0.85
-mutation_rate     : 0.2
-elitism_count     : 4
-tournament_size   : 5
-random_seed       : None
-"""
-
-
 @dataclass
 class DailySchedule:
     tanggal: date
