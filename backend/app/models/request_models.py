@@ -53,7 +53,10 @@ class ScheduleRequestInput(BaseModel):
     tahun: int
     bulan: int
     tanggal_request: str | None = None
-    estimasi_vol_kg: float
+    # estimasi_vol_kg sebelumnya wajib untuk semua pengajuan.
+    # Untuk reschedule dan batal, volume tidak digunakan.
+    # estimasi_vol_kg: float
+    estimasi_vol_kg: float = 0.0
     jenis_pengajuan: str = "baru" # "baru", "reschedule", "batal"
     tanggal_lama: str | None = None
     tanggal_baru: str | None = None

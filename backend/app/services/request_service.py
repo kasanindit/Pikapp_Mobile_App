@@ -179,6 +179,7 @@ def process_approve_request(request_id: str):
                 "uid": uid,
                 "bsu_id": bsu_display_id,
                 "vol_kg": float(req_data.get("estimasi_vol_kg", 0.0)),
+                # "vol_kg": float((removed_slot or {}).get("vol_kg", 0.0) or 0.0),
                 "req_terpenuhi": True,
                 "rescheduled_from": req_data.get("tanggal_lama"),
                 "request_id": request_id,
@@ -267,6 +268,8 @@ def submit_schedule_request(uid: str, request: ScheduleRequestInput):
         "tahun": request.tahun,
         "bulan": request.bulan,
         "tanggal_request": request.tanggal_request,
+        # Estimasi volume hanya relevan untuk pengajuan jadwal baru.
+        # Untuk reschedule dan batal, nilai ini dibiarkan default 0.0.
         "estimasi_vol_kg": request.estimasi_vol_kg,
         "jenis_pengajuan": request.jenis_pengajuan,
         "tanggal_lama": request.tanggal_lama,
