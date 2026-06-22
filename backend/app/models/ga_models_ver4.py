@@ -20,12 +20,9 @@ class BSU:
 class ScheduleConfig:
     start_date: date
     end_date: date
-
-    max_bsu_per_day: int = 3
-    vehicle_capacity_kg: float = 1000.0
-
+    
     # parameter GA
-    population_size: int = 80
+    population_size: int = 150
     generations: int = 200
     crossover_rate: float = 0.80
     mutation_rate: float = 0.15
@@ -36,12 +33,16 @@ class ScheduleConfig:
     coverage_weight: float = 35.0
     kecamatan_weight: float = 25.0
     max_bsu_weight: float = 30.0
-    capacity_weight: float = 5.0
-    volume_balance_weight: float = 5.0
+    capacity_weight: float = 10.0
+
+    max_bsu_per_day: int = 3
+    vehicle_capacity_kg: float = 1000.0
 
     random_seed: Optional[int] = None
     use_indonesian_holidays: bool = True
     additional_holidays: Optional[List[date]] = None
+    
+    # volume_balance_weight: float = 5.0
     
 @dataclass
 class DailySchedule:
@@ -83,18 +84,19 @@ class FitnessDetail:
     capacity_penalty: float
     max_bsu_penalty: float
     kecamatan_penalty: float
+    # volume_balance_penalty: float
     total_penalty: float
     fitness: float
 
-    total_distance: float
-    mixed_district_days: int
-    used_days: int
-    scheduled_bsu_count: int
-    missing_bsu_count: int
-    duplicate_bsu_count: int
-    empty_days_count: int
-    overloaded_days_count: int
-    over_quota_days_count: int
+    # total_distance: float
+    mixed_district_days: int = None
+    used_days: int = None
+    scheduled_bsu_count: int = None
+    missing_bsu_count: int = None
+    duplicate_bsu_count: int = None
+    empty_days_count: int = None
+    overloaded_days_count: int = None
+    over_quota_days_count: int = None
 
 
 @dataclass

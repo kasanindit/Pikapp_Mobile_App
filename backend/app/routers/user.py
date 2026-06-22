@@ -16,7 +16,7 @@ router = APIRouter(tags=["user"])
 def get_current_bsu(decoded_token: dict = Depends(verify_token)):
     uid = decoded_token["uid"]
     data = get_bsu_detail(uid)
-    return data # Existing code returned dict directly without success wrapper
+    return data
 
 @router.put("/bsu/update")
 def UpdateProfile(
@@ -38,7 +38,7 @@ def UpdateProfile(
     return {
         "message": "Profile updated successfully",
         "user_data": user_data
-    } # Existing code returned dict directly without success wrapper
+    }
 
 @router.get("/periode/{tahun}/{bulan}/active")
 def get_periode_active(tahun: int, bulan: int, decoded_token: dict = Depends(verify_token)):

@@ -45,39 +45,39 @@ def get_working_days(
     return working_days
 
 
-def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    earth_radius_km = 6371.0
-    lat1_rad = math.radians(lat1)
-    lon1_rad = math.radians(lon1)
-    lat2_rad = math.radians(lat2)
-    lon2_rad = math.radians(lon2)
+# def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+#     earth_radius_km = 6371.0
+#     lat1_rad = math.radians(lat1)
+#     lon1_rad = math.radians(lon1)
+#     lat2_rad = math.radians(lat2)
+#     lon2_rad = math.radians(lon2)
 
-    dlat = lat2_rad - lat1_rad
-    dlon = lon2_rad - lon1_rad
+#     dlat = lat2_rad - lat1_rad
+#     dlon = lon2_rad - lon1_rad
 
-    a = (
-        math.sin(dlat / 2) ** 2
-        + math.cos(lat1_rad)
-        * math.cos(lat2_rad)
-        * math.sin(dlon / 2) ** 2
-    )
-    a = max(0.0, min(1.0, a))
-    return 2 * earth_radius_km * math.asin(math.sqrt(a))
+#     a = (
+#         math.sin(dlat / 2) ** 2
+#         + math.cos(lat1_rad)
+#         * math.cos(lat2_rad)
+#         * math.sin(dlon / 2) ** 2
+#     )
+#     a = max(0.0, min(1.0, a))
+#     return 2 * earth_radius_km * math.asin(math.sqrt(a))
 
 
-def calculate_route_distance(items: List[BSU]) -> float:
-    if len(items) <= 1:
-        return 0.0
+# def calculate_route_distance(items: List[BSU]) -> float:
+#     if len(items) <= 1:
+#         return 0.0
 
-    return sum(
-        haversine_distance(
-            items[index].latitude,
-            items[index].longitude,
-            items[index + 1].latitude,
-            items[index + 1].longitude,
-        )
-        for index in range(len(items) - 1)
-    )
+#     return sum(
+#         haversine_distance(
+#             items[index].latitude,
+#             items[index].longitude,
+#             items[index + 1].latitude,
+#             items[index + 1].longitude,
+#         )
+#         for index in range(len(items) - 1)
+#     )
 
 
 def build_daily_schedule(tanggal: date, items: List[BSU]) -> DailySchedule:
@@ -85,7 +85,7 @@ def build_daily_schedule(tanggal: date, items: List[BSU]) -> DailySchedule:
         tanggal=tanggal,
         items=items,
         total_volume=sum(item.estimated_volume_kg for item in items),
-        total_distance=calculate_route_distance(items),
+        # total_distance=calculate_route_distance(items),
         kecamatan_list=sorted({item.kecamatan for item in items}),
     )
 

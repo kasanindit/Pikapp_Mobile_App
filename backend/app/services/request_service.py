@@ -24,10 +24,10 @@ def _slot_belongs_to_user(slot: dict, uid: str, bsu_display_id: str | None = Non
     identifiers = {value for value in [uid, bsu_display_id] if value}
     return slot.get("uid") in identifiers or slot.get("bsu_id") in identifiers
 
-def _validate_period_is_open(tahun: int, bulan: int):
-    periode_doc = db.collection("periode_pengajuan").document(f"{tahun}_{bulan}").get()
-    if not periode_doc.exists or not periode_doc.to_dict().get("is_open", False):
-        raise HTTPException(status_code=403, detail="Periode pengajuan untuk bulan dan tahun ini sedang ditutup")
+# def _validate_period_is_open(tahun: int, bulan: int):
+#     periode_doc = db.collection("periode_pengajuan").document(f"{tahun}_{bulan}").get()
+#     if not periode_doc.exists or not periode_doc.to_dict().get("is_open", False):
+#         raise HTTPException(status_code=403, detail="Periode pengajuan untuk bulan dan tahun ini sedang ditutup")
 
 def _validate_change_request(uid: str, bsu_display_id: str, request: ScheduleRequestInput):
     old_date = _parse_schedule_date(request.tanggal_lama, "tanggal_lama")
@@ -82,7 +82,7 @@ def fetch_all_schedule_requests():
     bsu_map = {}
     for b_doc in bsu_docs:
         b_data = b_doc.to_dict()
-        # uid adalah kunci relasi utama
+        
         b_uid = b_data.get("uid")
         if b_uid:
             bsu_map[b_uid] = {
@@ -96,7 +96,6 @@ def fetch_all_schedule_requests():
     data = []
     for doc in docs:
         req_data = doc.to_dict()
-        # uid adalah kunci relasi — bsu_id hanya untuk display
         uid_req = req_data.get("uid")
         req_data["bsu_detail"] = bsu_map.get(uid_req, {})
         data.append(req_data)
@@ -114,7 +113,7 @@ def process_approve_request(request_id: str):
     jenis = req_data.get("jenis_pengajuan", "baru")
     tahun = req_data.get("tahun")
     bulan = req_data.get("bulan")
-    # uid adalah kunci relasi untuk mencari slot di jadwal
+
     uid = req_data.get("uid")
     
     if jenis in ["reschedule", "batal"]:
@@ -251,25 +250,20 @@ def submit_schedule_request(uid: str, request: ScheduleRequestInput):
     if request.jenis_pengajuan not in ALLOWED_REQUEST_TYPES:
         raise HTTPException(status_code=400, detail="jenis_pengajuan tidak valid")
     
-    # uid adalah kunci relasi utama; bsu_id hanya untuk display
     bsu_display_id = bsu_data.get("bsu_id", uid)
     
-    if request.jenis_pengajuan == "baru":
-        _validate_period_is_open(request.tahun, request.bulan)
-    else:
-        _validate_change_request(uid, bsu_display_id, request)
+    _validate_change_request(uid, bsu_display_id, request)    
 
     doc_id = f"{request.tahun}_{request.bulan}_{uid}_{int(datetime.now().timestamp())}"
     
+    now = datetime.now(timezone.utc)
+    
     request_data = {
         "request_id": doc_id,
-        "uid": uid,                          # relasi utama
-        "bsu_id": bsu_display_id,            # display only
+        "uid": uid,                         
+        "bsu_id": bsu_display_id,
         "tahun": request.tahun,
         "bulan": request.bulan,
-        "tanggal_request": request.tanggal_request,
-        # Estimasi volume hanya relevan untuk pengajuan jadwal baru.
-        # Untuk reschedule dan batal, nilai ini dibiarkan default 0.0.
         "estimasi_vol_kg": request.estimasi_vol_kg,
         "jenis_pengajuan": request.jenis_pengajuan,
         "tanggal_lama": request.tanggal_lama,
@@ -282,7 +276,11 @@ def submit_schedule_request(uid: str, request: ScheduleRequestInput):
     
     db.collection("schedule_requests").document(doc_id).set(request_data)
     
-    return {**request_data, "created_at": None, "updated_at": None}
+    return {
+        **request_data,
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat()
+    }
 
 def remove_schedule_request(uid: str, request_id: str):
     doc_ref = db.collection("schedule_requests").document(request_id)

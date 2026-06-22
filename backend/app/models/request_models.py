@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-# ==========================================
-# ADMIN REQUEST MODELS
-# ==========================================
 
+# ADMIN REQUEST MODELS
 class CoordinateUpdate(BaseModel):
     lat: float
     long: float
@@ -35,10 +33,7 @@ class SchedulePublishRequest(BaseModel):
     hari_list: list[dict]
 
 
-# ==========================================
 # USER REQUEST MODELS
-# ==========================================
-
 class ProfileUpdate(BaseModel):
     bsu_name: str | None = None
     address: str | None = None
@@ -52,14 +47,11 @@ class ProfileUpdate(BaseModel):
 class ScheduleRequestInput(BaseModel):
     tahun: int
     bulan: int
-    tanggal_request: str | None = None
-    # estimasi_vol_kg sebelumnya wajib untuk semua pengajuan.
-    # Untuk reschedule dan batal, volume tidak digunakan.
-    # estimasi_vol_kg: float
-    estimasi_vol_kg: float = 0.0
-    jenis_pengajuan: str = "baru" # "baru", "reschedule", "batal"
-    tanggal_lama: str | None = None
-    tanggal_baru: str | None = None
+    # tanggal_request: str | None = None
+    estimasi_vol_kg: float
+    jenis_pengajuan: str 
+    tanggal_lama: str 
+    tanggal_baru: str | None = None 
     alasan: str | None = None
 
 class HistoryStatusUpdate(BaseModel):
