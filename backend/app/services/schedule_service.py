@@ -3,14 +3,26 @@ from google.cloud import firestore
 from datetime import datetime, date
 from calendar import monthrange
 import math
+import time
 from database import db
 from models.request_models import GenerateScheduleRequest
 from models.ga_models_ver4 import BSU, ScheduleConfig
-from services.genetic_algorithm_ver4 import generate_schedule_with_ga_v4
+# from services.genetic_algorithm_ver4 import generate_schedule_with_ga_v4
+from services.ga_scheduler_ver5 import generate_schedule_with_ga_v5
+# from models.ga_models import BSU, ScheduleConfig
+# from services.genetic_algorithm import generate_schedule_with_ga
 from utils.firestore_helper import get_bsu_by_uid
 
 FINAL_SKIP_STATUSES = {"canceled", "failed", "rescheduled"}
 VISIBLE_SCHEDULE_STATUSES = {"published", "finalized"}
+
+# Pengaturan sementara untuk mencoba backend/app/services/genetic_algorithm.py
+# GA_POPULATION_SIZE = 150
+# GA_GENERATIONS = 200
+# GA_CROSSOVER_RATE = 0.8
+# GA_MUTATION_RATE = 0.05
+# GA_ELITISM_COUNT = 2
+# GA_RANDOM_SEED = None
 
 def _parse_iso_date(value: str | None):
     if not value:
@@ -174,7 +186,12 @@ def _format_ga_schedule(result) -> list[dict]:
 
     return formatted
 
-def _format_ga_debug(result, bsu_list: list[BSU]) -> dict:
+def _format_ga_debug(
+    result,
+    bsu_list: list[BSU],
+    config: ScheduleConfig | None = None,
+    execution_time_seconds: float | None = None,
+) -> dict:
     detail = result.fitness_detail
     fitness_history = getattr(result, "fitness_history", []) or []
     initial_fitness = fitness_history[0] if fitness_history else result.best_fitness
@@ -215,8 +232,53 @@ def _format_ga_debug(result, bsu_list: list[BSU]) -> dict:
         }
         for snapshot in getattr(result, "generation_snapshots", [])
     ]
+    coverage_penalty = getattr(detail, "coverage_penalty", None)
+    capacity_penalty = getattr(detail, "capacity_penalty", None)
+    max_bsu_penalty = getattr(detail, "max_bsu_penalty", None)
+    penalty_weights = {
+        "coverage": getattr(config, "coverage_weight", 0.0) if config else 0.0,
+        "capacity": getattr(config, "capacity_weight", 0.0) if config else 0.0,
+        "max_bsu": getattr(config, "max_bsu_weight", 0.0) if config else 0.0,
+        "kecamatan": getattr(config, "kecamatan_weight", 0.0) if config else 0.0,
+    }
+    constraint_penalties = [
+        {
+            "code": "coverage",
+            "label": "Coverage hari kerja",
+            "penalty": coverage_penalty,
+            "weight": penalty_weights["coverage"],
+            "weighted_penalty": (coverage_penalty or 0.0) * penalty_weights["coverage"],
+            "affected_count": getattr(detail, "empty_days_count", None),
+        },
+        {
+            "code": "capacity",
+            "label": "Kapasitas kendaraan",
+            "penalty": capacity_penalty,
+            "weight": penalty_weights["capacity"],
+            "weighted_penalty": (capacity_penalty or 0.0) * penalty_weights["capacity"],
+            "affected_count": getattr(detail, "overloaded_days_count", None),
+        },
+        {
+            "code": "max_bsu",
+            "label": "Maksimal BSU per hari",
+            "penalty": max_bsu_penalty,
+            "weight": penalty_weights["max_bsu"],
+            "weighted_penalty": (max_bsu_penalty or 0.0) * penalty_weights["max_bsu"],
+            "affected_count": getattr(detail, "over_quota_days_count", None),
+        },
+        {
+            "code": "kecamatan",
+            "label": "Kesamaan kecamatan",
+            "penalty": kecamatan_penalty,
+            "weight": penalty_weights["kecamatan"],
+            "weighted_penalty": (kecamatan_penalty or 0.0) * penalty_weights["kecamatan"],
+            "affected_count": getattr(detail, "mixed_district_days", None),
+        },
+    ]
 
     return {
+        "execution_time_seconds": execution_time_seconds,
+        "execution_time_ms": round(execution_time_seconds * 1000, 2) if execution_time_seconds is not None else None,
         "active_bsu_count": len(bsu_list),
         "included_bsu": [
             {
@@ -234,6 +296,7 @@ def _format_ga_debug(result, bsu_list: list[BSU]) -> dict:
         "final_fitness": final_fitness,
         "fitness_improvement": fitness_improvement,
         "fitness_history_sample": fitness_history_sample,
+        "constraint_penalties": constraint_penalties,
         "ga_summary": {
             "best_fitness": result.best_fitness,
             "generation_found": result.generation_found + 1,
@@ -241,9 +304,9 @@ def _format_ga_debug(result, bsu_list: list[BSU]) -> dict:
             "scheduled_bsu_count": detail.scheduled_bsu_count,
             "unscheduled_bsu_count": unscheduled_bsu_count,
             "total_penalty": total_penalty,
-            "capacity_penalty": getattr(detail, "capacity_penalty", None),
+            "capacity_penalty": capacity_penalty,
             "kecamatan_penalty": kecamatan_penalty,
-            "max_bsu_penalty": getattr(detail, "max_bsu_penalty", None),
+            "max_bsu_penalty": max_bsu_penalty,
             "empty_days_count": getattr(detail, "empty_days_count", None),
             "overloaded_days_count": getattr(detail, "overloaded_days_count", None),
             "over_quota_days_count": getattr(detail, "over_quota_days_count", None),
@@ -265,14 +328,14 @@ def _format_ga_debug(result, bsu_list: list[BSU]) -> dict:
         "used_days": detail.used_days,
         "scheduled_bsu_count": detail.scheduled_bsu_count,
         "unscheduled_bsu_count": unscheduled_bsu_count,
-        "total_distance": detail.total_distance,
+        "total_distance": getattr(detail, "total_distance", None),
         "district_penalty": kecamatan_penalty,
         "unscheduled_penalty": unscheduled_penalty,
         "volume_penalty": getattr(detail, "volume_penalty", None),
         "constraint_penalty": getattr(detail, "constraint_penalty", total_penalty),
-        "coverage_penalty": getattr(detail, "coverage_penalty", None),
-        "capacity_penalty": getattr(detail, "capacity_penalty", None),
-        "max_bsu_penalty": getattr(detail, "max_bsu_penalty", None),
+        "coverage_penalty": coverage_penalty,
+        "capacity_penalty": capacity_penalty,
+        "max_bsu_penalty": max_bsu_penalty,
         "kecamatan_penalty": kecamatan_penalty,
         "total_penalty": total_penalty,
         "missing_bsu_count": getattr(detail, "missing_bsu_count", None),
@@ -300,21 +363,30 @@ def create_generated_schedule(request: GenerateScheduleRequest):
             end_date=end_date,
             max_bsu_per_day=max_bsu_harian,
             vehicle_capacity_kg=kapasitas_harian,
-            population_size=150,
-            generations=200,
             use_indonesian_holidays=True
         )
-        ga_result = generate_schedule_with_ga_v4(
+ 
+        ga_start_time = time.perf_counter()
+        ga_result = generate_schedule_with_ga_v5(
             bsu_list=bsu_list,
             config=config
         )
+        ga_execution_seconds = time.perf_counter() - ga_start_time
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to generate schedule: {str(e)}")
 
     formatted_jadwal = _format_ga_schedule(ga_result)
-    ga_debug = _format_ga_debug(ga_result, bsu_list)
+    ga_debug = _format_ga_debug(
+        ga_result,
+        bsu_list,
+        config=config,
+        execution_time_seconds=ga_execution_seconds,
+    )
     
     doc_id = f"{tahun}_{bulan}"
     jadwal_data = {

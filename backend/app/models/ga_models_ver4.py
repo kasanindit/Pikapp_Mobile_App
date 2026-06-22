@@ -20,52 +20,30 @@ class BSU:
 class ScheduleConfig:
     start_date: date
     end_date: date
+    
+    # parameter GA
+    population_size: int = 150
+    generations: int = 200
+    crossover_rate: float = 0.80
+    mutation_rate: float = 0.15
+    elitism_count: int = 2
+    tournament_size: int = 4
+    
+    # bobot constraint
+    coverage_weight: float = 35.0
+    kecamatan_weight: float = 25.0
+    max_bsu_weight: float = 30.0
+    capacity_weight: float = 10.0
 
     max_bsu_per_day: int = 3
     vehicle_capacity_kg: float = 1000.0
 
-    # population_size: int = 150
-    population_size: int = 100
-    generations: int = 200
-    # crossover_rate: float = 0.90
-    # mutation_rate: float = 0.05
-    crossover_rate: float = 0.85
-    mutation_rate: float = 0.2
-    elitism_count: int = 4
-    # tournament_size: int = 4
-    tournament_size: int = 5
     random_seed: Optional[int] = None
-
-    # coverage_weight: float = 40.0
-    coverage_weight: float = 5.0 # sudah diatasi di tahapan decoding
-    kecamatan_weight: float = 45.0
-    max_bsu_weight: float = 35.0
-    capacity_weight: float = 15.0
-    
-    # coverage_weight: float = 40.0
-    # kecamatan_weight: float = 25.0
-    # max_bsu_weight: float = 20.0
-    # capacity_weight: float = 10.0
-
     use_indonesian_holidays: bool = True
     additional_holidays: Optional[List[date]] = None
     
-    """
-    === Final Best Config ===
-coverage_weight   : 5
-capacity_weight   : 15
-max_bsu_weight    : 35
-kecamatan_weight  : 45
-population_size   : 100
-generations       : 200
-crossover_rate    : 0.85
-mutation_rate     : 0.2
-elitism_count     : 4
-tournament_size   : 5
-random_seed       : None
-"""
-
-
+    # volume_balance_weight: float = 5.0
+    
 @dataclass
 class DailySchedule:
     tanggal: date
@@ -106,18 +84,19 @@ class FitnessDetail:
     capacity_penalty: float
     max_bsu_penalty: float
     kecamatan_penalty: float
+    # volume_balance_penalty: float
     total_penalty: float
     fitness: float
 
-    total_distance: float
-    mixed_district_days: int
-    used_days: int
-    scheduled_bsu_count: int
-    missing_bsu_count: int
-    duplicate_bsu_count: int
-    empty_days_count: int
-    overloaded_days_count: int
-    over_quota_days_count: int
+    # total_distance: float
+    mixed_district_days: int = None
+    used_days: int = None
+    scheduled_bsu_count: int = None
+    missing_bsu_count: int = None
+    duplicate_bsu_count: int = None
+    empty_days_count: int = None
+    overloaded_days_count: int = None
+    over_quota_days_count: int = None
 
 
 @dataclass

@@ -46,18 +46,6 @@ def get_all_bsu(admin_user: dict = Depends(admin_only)):
         message="Successfully fetched all BSU"
     )
 
-@router.get("/periode/{tahun}/{bulan}")
-def get_periode_status(tahun: int, bulan: int, auth_status: dict = Depends(verify_token)):
-    # Note: Ini bisa diakses user juga (sesuai kode asli yang tidak pakai admin_only)
-    data = fetch_periode_status(tahun, bulan)
-    return success_response(data=data)
-
-@router.put("/admin/periode/{tahun}/{bulan}")
-def update_periode_status(tahun: int, bulan: int, request: PeriodeSettings, admin_user: dict = Depends(admin_only)):
-    set_periode_status(tahun, bulan, request.is_open)
-    return success_response(
-        message=f"Periode {tahun}-{bulan} is now {'open' if request.is_open else 'closed'}."
-    )
 
 @router.get("/admin/schedule-requests")
 def get_schedule_requests(admin_user: dict = Depends(admin_only)):
@@ -139,3 +127,15 @@ def delete_schedule_slot(tahun: int, bulan: int, tanggal: str, uid: str, admin_u
 def delete_monthly_schedule(tahun: int, bulan: int, admin_user: dict = Depends(admin_only)):
     remove_monthly_schedule(tahun, bulan)
     return success_response(message=f"Schedule for {tahun}-{bulan} has been deleted")
+
+# @router.get("/periode/{tahun}/{bulan}")
+# def get_periode_status(tahun: int, bulan: int, auth_status: dict = Depends(verify_token)):
+#     data = fetch_periode_status(tahun, bulan)
+#     return success_response(data=data)
+
+# @router.put("/admin/periode/{tahun}/{bulan}")
+# def update_periode_status(tahun: int, bulan: int, request: PeriodeSettings, admin_user: dict = Depends(admin_only)):
+#     set_periode_status(tahun, bulan, request.is_open)
+#     return success_response(
+#         message=f"Periode {tahun}-{bulan} is now {'open' if request.is_open else 'closed'}."
+#     )
