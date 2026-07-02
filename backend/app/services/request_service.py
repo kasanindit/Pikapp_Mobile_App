@@ -5,6 +5,7 @@ from database import db
 from models.request_models import ScheduleRequestInput
 from utils.firestore_helper import get_bsu_by_uid
 from services.history_service import write_pickup_history
+from services.holiday_service import is_indonesia_holiday
 
 ALLOWED_REQUEST_TYPES = {"baru", "reschedule", "batal"}
 
@@ -65,8 +66,11 @@ def _validate_change_request(uid: str, bsu_display_id: str, request: ScheduleReq
     if not old_day or not any(_slot_belongs_to_user(slot, uid, bsu_display_id) for slot in old_day.get("slots", [])):
         raise HTTPException(status_code=403, detail="Anda tidak memiliki jadwal pada tanggal tersebut")
 
+    # if request.jenis_pengajuan == "reschedule":
+    #     new_date = _parse_schedule_date(request.tanggal_baru, "tanggal_baru")
     if request.jenis_pengajuan == "reschedule":
         new_date = _parse_schedule_date(request.tanggal_baru, "tanggal_baru")
+        _validate_reschedule_business_day(new_date)
         target_doc = db.collection("jadwal").document(_schedule_doc_id(new_date)).get()
         if not target_doc.exists:
             raise HTTPException(status_code=403, detail="Jadwal tujuan belum dipublikasikan")
@@ -298,3 +302,17 @@ def remove_schedule_request(uid: str, request_id: str):
         raise HTTPException(status_code=400, detail="Cannot delete request that is already processed (approved/rejected)")
         
     doc_ref.delete()
+    
+def _validate_reschedule_business_day(new_date):
+    if new_date.weekday() >= 5:
+        raise HTTPException(
+            status_code=400,
+            detail="Tanggal baru tidak boleh hari Sabtu atau Minggu"
+        )
+
+    is_holiday, holiday_name = is_indonesia_holiday(new_date)
+    if is_holiday:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Tanggal baru bertepatan dengan libur nasional: {holiday_name}"
+        )

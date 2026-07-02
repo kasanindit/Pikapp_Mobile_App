@@ -9,6 +9,7 @@ from services.periode_service import fetch_periode_status
 from services.request_service import submit_schedule_request, remove_schedule_request
 from services.schedule_service import fetch_published_schedule, fetch_my_schedule
 from services.history_service import fetch_user_history
+from services.holiday_service import fetch_indonesia_holidays
 
 router = APIRouter(tags=["user"])
 
@@ -85,3 +86,15 @@ def delete_my_request(request_id: str, decoded_token: dict = Depends(verify_toke
     uid = decoded_token["uid"]
     remove_schedule_request(uid, request_id)
     return success_response(message="Schedule request deleted successfully")
+
+@router.get("/holidays")
+def get_indonesia_holidays(
+    tahun: int,
+    bulan: int,
+    decoded_token: dict = Depends(verify_token)
+):
+    data = fetch_indonesia_holidays(tahun, bulan)
+    return success_response(
+        data=data,
+        message="Successfully fetched holidays"
+    )
