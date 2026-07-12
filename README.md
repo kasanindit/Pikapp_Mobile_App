@@ -341,14 +341,6 @@ cd frontend\ScheduleApp
 .\gradlew.bat test
 ```
 
-## Catatan Keamanan
-
-- Jangan commit `serviceAccountKey.json` ke repository publik.
-- Jaga kerahasiaan `google-services.json` dan konfigurasi Firebase sesuai kebijakan proyek.
-- Jangan menyimpan API key Google Maps langsung di kode sumber.
-- Gunakan role `admin` hanya untuk akun yang memang berwenang.
-- Password default BSU yang dibuat backend adalah `user123`; ubah kebijakan ini sebelum produksi agar lebih aman.
-
 ## Ringkasan
 
 PikApp membantu pengelolaan jadwal pengangkutan sampah BSU secara digital. Admin dapat mengelola BSU, membuat jadwal otomatis dengan Genetic Algorithm, mempublikasikan jadwal, dan memantau riwayat operasional. User BSU dapat melihat jadwal, mengubah profil, dan mengajukan perubahan jadwal melalui aplikasi Android.
